@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1",
+  "repo": "wave-av/cli",
+  "version": "0.6.0",
+  "lifecycle": "beta",
+  "planeLayer": null,
+  "foundationPin": "v1",
+  "maintainers": [{ "team": "sdk" }],
+  "exposes": {
+    "cli": [{ "binary": "wave", "subcommands": ["auth", "feed", "clip", "transcribe", "agent"] }]
+  },
+  "consumes": {
+    "waveProducts": [
+      { "repo": "wave-av/wave-gateway" }
+    ],
+    "foundationFrameworks": ["frameworks/platform-registry"]
+  },
+  "tags": ["cli", "public", "operator-tooling"]
+}
