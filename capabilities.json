@@ -11,7 +11,7 @@
   },
   "consumes": {
     "waveProducts": [
-      { "repo": "wave-av/wave-gateway" }
+      { "repo": "wave-av/api-gateway" }
     ],
     "foundationFrameworks": ["frameworks/platform-registry"]
   },
