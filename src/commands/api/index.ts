@@ -24,9 +24,12 @@ export function registerApiCommands(program: Command): void {
         }
 
         const baseUrl = config.projects[project]?.baseUrl ?? "https://wave.online";
-        const url = path.startsWith("http")
-          ? path
-          : `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+        const base = new URL(baseUrl);
+        const requested = new URL(path, `${base.origin}/`);
+        if (requested.protocol !== "https:" || requested.origin !== base.origin) {
+          throw new Error("API requests must use the configured WAVE HTTPS host");
+        }
+        const url = requested.toString();
 
         const headers: Record<string, string> = {
           Authorization: `Bearer ${apiKey}`,
