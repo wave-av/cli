@@ -144,6 +144,34 @@ jobs:
 
       - run: npm run build
 
+      # Gate 1 (secret-scan) only scans the checked-out source tree, BEFORE
+      # `npm run build` runs. Anything the build step generates or bundles
+      # into dist/ (env values baked in at build time, vendored deps, etc.)
+      # is what actually ships to npm and has never been scanned. Re-run the
+      # same pinned+checksum-verified gitleaks over the build output so the
+      # "secret-scanned" claim covers what npm actually receives.
+      - name: Install gitleaks (pinned + checksum-verified)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          set -euo pipefail
+          curl -fsSL --proto '=https' --tlsv1.2 -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          rm -f gitleaks gitleaks.tar.gz
+
+      - name: gitleaks (secret scan — build output)
+        run: |
+          set -euo pipefail
+          if [ -d dist ]; then
+            gitleaks detect --no-git --source dist --redact --no-banner --exit-code 1
+          else
+            echo "::warning title=no dist directory::npm run build produced no dist/ - nothing to scan"
+          fi
+
       - name: e2e-smoke — pack + install + import the real tarball
         run: |
           set -euo pipefail
@@ -161,7 +189,7 @@ jobs:
           # condition (per the package.json published as 1.0.8) — it is
           # ESM-only. A CJS require() smoke test would therefore fail on a
           # correctly-built package, so only ESM import is exercised here.
-          node --input-type=module -e "import * as m from '@wave-av/cli'; if(!m){console.error('ESM import failed');process.exit(1);} console.log('ESM ok - exports:',Object.keys(m).length);"
+          node --input-type=module -e "import * as m from '@wave-av/cli'; if(!m||Object.keys(m).length===0){console.error('ESM import produced no exports');process.exit(1);} console.log('ESM ok - exports:',Object.keys(m).length);"
           # The declared `wave` bin actually exists in the packed tree and is
           # executable. This is a CLI package — the bin IS the product — so
           # this check is load-bearing, not incidental. It only checks
@@ -175,6 +203,7 @@ jobs:
             const bins=typeof pkg.bin==='string'?{[pkg.name]:pkg.bin}:(pkg.bin||{});
             const names=Object.keys(bins);
             if(names.length===0){console.error('no bin declared - @wave-av/cli is expected to ship a bin');process.exit(1);}
+            if(!bins.wave){console.error('no "wave" bin declared - @wave-av/cli is expected to ship a bin named exactly "wave", found: '+names.join(', '));process.exit(1);}
             for(const n of names){
               const f=path.join(dir,bins[n]);
               if(!fs.existsSync(f)){console.error('declared bin missing from tarball: '+n+' -> '+bins[n]);process.exit(1);}
@@ -222,13 +251,32 @@ jobs:
           NPM_VER="$(npm --version)"
           echo "npm version: $NPM_VER"
           NPM_VER="$NPM_VER" node -e "
-            const cur=process.env.NPM_VER.split('.').map(Number), min=[11,5,1];
+            const raw=process.env.NPM_VER;
+            const m=raw.match(/^([0-9]+)\.([0-9]+)\.([0-9]+)/);
+            if(!m){console.error('npm version '+raw+' is not a parseable x.y.z - cannot verify trusted-publishing floor');process.exit(1);}
+            const cur=[Number(m[1]),Number(m[2]),Number(m[3])], min=[11,5,1];
             for(let i=0;i<3;i++){
               if(cur[i]>min[i]) process.exit(0);
-              if(cur[i]<min[i]){console.error('npm '+process.env.NPM_VER+' < 11.5.1 - trusted publishing unavailable');process.exit(1);}
+              if(cur[i]<min[i]){console.error('npm '+raw+' < 11.5.1 - trusted publishing unavailable');process.exit(1);}
             }"
 
-      - run: npm ci
+      # --ignore-scripts: this job holds id-token: write (a short-lived OIDC
+      # publish credential). Dependency lifecycle scripts (preinstall/install/
+      # postinstall) are untrusted code paths; running them here would widen
+      # the blast radius of a compromised dependency to the OIDC token. The
+      # verify job (no id-token permission) already ran a full `npm ci` +
+      # build/lint/type-check/test, so nothing here depends on install-time
+      # lifecycle scripts having run.
+      - run: npm ci --ignore-scripts
+
+      # Build in THIS job, on THIS checkout, immediately before publish.
+      # `verify` builds and e2e-smokes on a separate runner/workspace that is
+      # not shared with `publish` (GitHub Actions jobs do not share a
+      # filesystem) — so without a build here, `npm publish` below would pack
+      # whatever happens to be in the working tree, which may be missing
+      # `dist/` entirely and would not be the artifact that `verify` proved
+      # working.
+      - run: npm run build
 
       # GITHUB_REF_NAME is attacker-influenceable by anyone who can push a tag,
       # so it is read from the environment and never interpolated into the
