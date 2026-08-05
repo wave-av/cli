@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { writeFile, mkdir, readFile, readdir, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { wrapCommand } from "../../lib/errors.js";
@@ -56,7 +56,8 @@ const TEMPLATES: TemplateDefinition[] = [
 function getTemplatesDir(): string {
   const thisFile = fileURLToPath(import.meta.url);
   // Walk up from src/commands/init/ or dist/commands/init/ to package root
-  const packageRoot = resolve(dirname(thisFile), "..", "..", "..");
+  const fileDir = dirname(thisFile);
+  const packageRoot = fileDir.endsWith(`${sep}dist`) ? resolve(fileDir, "..") : resolve(fileDir, "..", "..", "..");
   return join(packageRoot, "templates");
 }
 
