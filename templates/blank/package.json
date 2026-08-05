@@ -8,7 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@wave/sdk": "^2.0.0"
+    "@wave-av/sdk": "^2.0.0"
   },
   "devDependencies": {
     "tsx": "^4.0.0",
