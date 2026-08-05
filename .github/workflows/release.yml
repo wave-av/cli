@@ -167,7 +167,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -d dist ]; then
-            gitleaks detect --no-git --source dist --redact --no-banner --exit-code 1
+            gitleaks detect --no-git --source dist --config .gitleaks.toml --redact --no-banner --exit-code 1
           else
             echo "::warning title=no dist directory::npm run build produced no dist/ - nothing to scan"
           fi
@@ -277,6 +277,34 @@ jobs:
       # `dist/` entirely and would not be the artifact that `verify` proved
       # working.
       - run: npm run build
+
+      # This job builds on its OWN checkout (see comment above), so the dist/
+      # scan that runs in `verify` never sees these bytes. Re-run the same
+      # pinned+checksum-verified gitleaks, with the repo's config, over THIS
+      # job's build output too — this is the tree `npm publish` actually
+      # uploads, and it is otherwise the one build in this whole workflow
+      # that no secret-scan gate ever touches.
+      - name: Install gitleaks (pinned + checksum-verified)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          set -euo pipefail
+          curl -fsSL --proto '=https' --tlsv1.2 -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          rm -f gitleaks gitleaks.tar.gz
+
+      - name: gitleaks (secret scan — publish job's own build output)
+        run: |
+          set -euo pipefail
+          if [ -d dist ]; then
+            gitleaks detect --no-git --source dist --config .gitleaks.toml --redact --no-banner --exit-code 1
+          else
+            echo "::warning title=no dist directory::npm run build produced no dist/ - nothing to scan"
+          fi
 
       # GITHUB_REF_NAME is attacker-influenceable by anyone who can push a tag,
       # so it is read from the environment and never interpolated into the
