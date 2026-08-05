@@ -19,6 +19,18 @@ export function registerAuthCommands(program: Command): void {
           const config = await loadConfig();
           const project = config.currentProject || "default";
           await storeApiKey(project, opts.apiKey);
+          await updateConfig((config) => ({
+            ...config,
+            currentProject: project,
+            projects: {
+              ...config.projects,
+              [project]: config.projects[project] ?? {
+                organizationId: "",
+                organizationName: "",
+                baseUrl: process.env["WAVE_BASE_URL"] ?? "https://wave.online",
+              },
+            },
+          }));
           console.log(chalk.green(`API key stored for project "${project}".`));
           return;
         }
@@ -40,6 +52,14 @@ export function registerAuthCommands(program: Command): void {
         await updateConfig((config) => ({
           ...config,
           currentProject: project,
+          projects: {
+            ...config.projects,
+            [project]: config.projects[project] ?? {
+              organizationId: "",
+              organizationName: "",
+              baseUrl,
+            },
+          },
         }));
 
         console.log(chalk.green("\nAuthentication complete. You can now use the WAVE CLI."));
