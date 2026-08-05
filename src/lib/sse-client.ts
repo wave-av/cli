@@ -93,7 +93,9 @@ export async function connectSSE(
 
       while (!controller.signal.aborted) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          throw new Error("SSE connection closed");
+        }
 
         buffer += decoder.decode(value, { stream: true });
 
