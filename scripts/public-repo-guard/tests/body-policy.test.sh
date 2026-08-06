@@ -57,8 +57,18 @@ expect 1 'internal-only marker' \
 AKID_FIXTURE="AKI""A1234567890ABCDEF"
 expect 1 'AWS access key id' \
   "The failing job had ${AKID_FIXTURE} configured."
+# Regression: the about-the-control allowlist once applied to EVERY rule, so a key
+# pasted in a sentence that happened to name the gate was reported clean. Credential
+# formats are never legitimate in prose — no gate word may exempt one.
+expect 1 'gate word on the same line does NOT exempt a credential' \
+  "body-policy note: the leaked key was ${AKID_FIXTURE} here."
 expect 1 'internal tailscale IP' \
   'It resolves to 100.71.4.19 from inside the fleet.'
+# Regression: `read` stops at the first newline, so a newline-separated org variable
+# once configured only the first name and passed over the unscanned rest.
+GUARD_PRIVATE_REPOS=$'wave-gateway\nwave-transports\nagent-money' \
+expect 1 'newline-separated GUARD_PRIVATE_REPOS still scans later names' \
+  'The MOQ_JOIN_SECRET was added; wave-transports picks it up on deploy.'
 
 # --- must PASS (precision — these keep the gate deployable) -------------------
 expect 0 'bare private-repo cross-reference' \
@@ -67,6 +77,10 @@ expect 0 'two private repos, no operational detail' \
   'Both wave-gateway and wave-transports will need a follow-up for this.'
 expect 0 'credential NAME with no private repo nearby' \
   'The handler now reads SOME_API_TOKEN from the environment instead of a literal.'
+# Regression: a global (?i) once leaked into the SCREAMING_CASE alternative, so
+# ordinary lowercase prose like "api_key" counted as a credential NAME.
+expect 0 'lowercase api_key near a private repo is prose, not a credential NAME' \
+  'Update wave-gateway docs to read the api_key from config.'
 expect 0 'public runner path is not an operator path' \
   'CI checks out to /home/runner/work/repo/repo before the scan runs.'  # enforce-ignore (fixture)
 expect 0 'talking about the control' \
