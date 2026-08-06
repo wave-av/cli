@@ -34,6 +34,10 @@ on:
     types: [opened, edited]
   issue_comment:
     types: [created, edited]
+  # Inline review comments on a diff are a SEPARATE event from issue_comment —
+  # without this trigger they are world-readable text that no job ever scans.
+  pull_request_review_comment:
+    types: [created, edited]
   push:
     branches: [main, master]
   workflow_dispatch:
@@ -53,9 +57,13 @@ jobs:
     name: Secrets + content policy
     # Skips issue/comment events (the tree scan has nothing to say about a comment,
     # and the org should not pay for a gitleaks run every time anyone posts one) and
-    # skips `edited` (a title or body edit does not change the tree).
+    # skips `edited` UNLESS the base branch changed: a title or body edit does not
+    # change the tree, but retargeting a PR changes the merge result and fires only
+    # `edited` (never `synchronize`), so without this carve-out nothing would ever
+    # re-scan the new merge tree before merge.
     if: >-
-      (github.event_name == 'pull_request' && github.event.action != 'edited')
+      (github.event_name == 'pull_request'
+        && (github.event.action != 'edited' || github.event.changes.base != null))
       || github.event_name == 'push'
       || github.event_name == 'workflow_dispatch'
     concurrency:
@@ -130,16 +138,22 @@ jobs:
   # can stop that class before publication.
   body-guard:
     name: Body content policy
-    if: github.event_name == 'pull_request' || github.event_name == 'issues' || github.event_name == 'issue_comment'
+    if: >-
+      github.event_name == 'pull_request'
+      || github.event_name == 'issues'
+      || github.event_name == 'issue_comment'
+      || github.event_name == 'pull_request_review_comment'
     concurrency:
-      # Keyed on the specific PR / comment / issue rather than github.ref, because
+      # Keyed on the specific comment / PR / issue rather than github.ref, because
       # issue events all report the default branch and a ref-keyed group would let
-      # two comments cancel each other, leaving one unscanned.
+      # two comments cancel each other, leaving one unscanned. The comment id comes
+      # FIRST: review-comment payloads also carry the PR number, and keying those on
+      # the PR would collapse two rapid comments into one group, dropping a verdict.
       #
       # cancel-in-progress is deliberately FALSE. Every version of a body deserves a
       # verdict, the job is seconds long, and a cancelled check-run lingers on the
       # commit and makes an otherwise-green PR look broken.
-      group: public-repo-guard-body-${{ github.event.pull_request.number || github.event.comment.id || github.event.issue.number || github.ref }}
+      group: public-repo-guard-body-${{ github.event.comment.id || github.event.pull_request.number || github.event.issue.number || github.ref }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
