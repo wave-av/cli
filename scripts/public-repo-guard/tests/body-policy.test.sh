@@ -69,6 +69,10 @@ expect 1 'guard:allow does NOT exempt a credential in a body' \
   "Key for the repro: ${AKID_FIXTURE} — guard:allow repro-example"
 expect 1 'internal tailscale IP' \
   'It resolves to 100.71.4.19 from inside the fleet.'
+# The range-designation exemption must stay razor-thin: a host one address past
+# the all-zero network form is a real fleet machine and still blocks.
+expect 1 'host adjacent to the network address still blocks' \
+  'The subnet router answers on 100.64.0.1 inside the fleet.'
 # Regression: `read` stops at the first newline, so a newline-separated org variable
 # once configured only the first name and passed over the unscanned rest.
 GUARD_PRIVATE_REPOS=$'wave-gateway\nwave-transports\nagent-money' \
@@ -94,6 +98,13 @@ expect 0 'explicit guard:allow with a reason' \
   'Example for the docs: wave-gateway holds EXAMPLE_SECRET — guard:allow documented-example'
 expect 0 'ordinary clean body' \
   'Bumps the draft revision and regenerates the fixtures. No behaviour change.'
+# Regression risk called out in review: the gate's own docs (and any body quoting
+# them, which review bots do) name the range as 100.64.0.0/10. That is the NAME
+# of the range, not a host on it, and infra rules have no allowlist escape.
+expect 0 'the CGNAT range designation is the name of the range, not a host' \
+  'The internal-ip rule covers the 100.64.0.0/10 space by design.'
+expect 0 'the bare all-zero network address is a designation too' \
+  'Traffic in 100.64.0.0 space never leaves the tailnet.'
 # Regression: the first CI run of this job failed on its own PR, because a review
 # bot edited the body to summarize the change and quoted the marker verbatim.
 expect 0 'marker MENTIONED in straight quotes is a description' \

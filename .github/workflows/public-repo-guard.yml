@@ -38,6 +38,11 @@ on:
   # without this trigger they are world-readable text that no job ever scans.
   pull_request_review_comment:
     types: [created, edited]
+  # A submitted review's top-level body (the free-text field above any inline
+  # comments) is yet another world-readable payload, separate from BOTH comment
+  # events — without this trigger nothing ever scans it.
+  pull_request_review:
+    types: [submitted, edited]
   push:
     branches: [main, master]
   workflow_dispatch:
@@ -55,23 +60,28 @@ permissions:
 jobs:
   guard:
     name: Secrets + content policy
-    # Skips issue/comment events (the tree scan has nothing to say about a comment,
-    # and the org should not pay for a gitleaks run every time anyone posts one) and
-    # skips `edited` UNLESS the base branch changed: a title or body edit does not
-    # change the tree, but retargeting a PR changes the merge result and fires only
-    # `edited` (never `synchronize`), so without this carve-out nothing would ever
-    # re-scan the new merge tree before merge.
-    if: >-
-      (github.event_name == 'pull_request'
-        && (github.event.action != 'edited' || github.event.changes.base != null))
-      || github.event_name == 'push'
-      || github.event_name == 'workflow_dispatch'
+    # Skips ONLY issues/issue_comment events: the tree scan has nothing to say
+    # about a comment, and those events run against the DEFAULT branch, so their
+    # skipped check runs cannot attach to any PR head. Every event that runs in a
+    # PR's context (pull_request INCLUDING `edited`, pull_request_review,
+    # pull_request_review_comment) must run the scan for real: a job skipped by a
+    # job-level `if` still publishes a check run named "Secrets + content policy"
+    # with conclusion `skipped` on the PR head SHA, branch protection treats
+    # skipped as passing, and the newest check run for a name wins — so a mere
+    # title edit or review comment would flip an already-FAILED required tree
+    # scan green with nothing re-examining the tree. Re-scanning an unchanged
+    # tree costs minutes; a maskable required check costs the gate.
+    if: github.event_name != 'issues' && github.event_name != 'issue_comment'
     concurrency:
       group: public-repo-guard-tree-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # This job only reads the tree — never leave the token sitting in
+          # .git/config while repo-supplied scripts execute in the workspace.
+          persist-credentials: false
 
       # gitleaks' GitHub Action requires a paid license for organizations; the CLI
       # itself is MIT-licensed and free. Pin the version AND verify the release
@@ -143,17 +153,19 @@ jobs:
       || github.event_name == 'issues'
       || github.event_name == 'issue_comment'
       || github.event_name == 'pull_request_review_comment'
+      || github.event_name == 'pull_request_review'
     concurrency:
-      # Keyed on the specific comment / PR / issue rather than github.ref, because
-      # issue events all report the default branch and a ref-keyed group would let
-      # two comments cancel each other, leaving one unscanned. The comment id comes
-      # FIRST: review-comment payloads also carry the PR number, and keying those on
-      # the PR would collapse two rapid comments into one group, dropping a verdict.
+      # Keyed on the specific comment / review / PR / issue rather than github.ref,
+      # because issue events all report the default branch and a ref-keyed group
+      # would let two comments cancel each other, leaving one unscanned. The comment
+      # and review ids come FIRST: those payloads also carry the PR number, and
+      # keying them on the PR would collapse two rapid comments into one group,
+      # dropping a verdict.
       #
       # cancel-in-progress is deliberately FALSE. Every version of a body deserves a
       # verdict, the job is seconds long, and a cancelled check-run lingers on the
       # commit and makes an otherwise-green PR look broken.
-      group: public-repo-guard-body-${{ github.event.comment.id || github.event.pull_request.number || github.event.issue.number || github.ref }}
+      group: public-repo-guard-body-${{ github.event.comment.id || github.event.review.id || github.event.pull_request.number || github.event.issue.number || github.ref }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
@@ -163,6 +175,9 @@ jobs:
           # tree on every comment.
           sparse-checkout: scripts/public-repo-guard
           sparse-checkout-cone-mode: false
+          # This job only reads the scripts — never leave the token sitting in
+          # .git/config while repo-supplied scripts execute in the workspace.
+          persist-credentials: false
 
       # Same rationale as the tree job: body-policy.sh needs a PCRE2-enabled rg,
       # and Ubuntu's apt package has none.
@@ -193,13 +208,13 @@ jobs:
           # An UNRECOGNIZED payload shape must fail, never quietly scan nothing and
           # report a pass. If the event schema ever moves, this job must go red
           # rather than become a green rubber stamp over an unscanned body.
-          if [ "$(jq -r 'has("pull_request") or has("issue") or has("comment")' "$GITHUB_EVENT_PATH")" != "true" ]; then
-            echo "::error title=public-repo-guard (body-guard)::Event payload contains no pull_request/issue/comment object — refusing to report a pass on an unscanned body."
+          if [ "$(jq -r 'has("pull_request") or has("issue") or has("comment") or has("review")' "$GITHUB_EVENT_PATH")" != "true" ]; then
+            echo "::error title=public-repo-guard (body-guard)::Event payload contains no pull_request/issue/comment/review object — refusing to report a pass on an unscanned body."
             exit 1
           fi
           jq -r '[.pull_request.title, .pull_request.body,
                   .issue.title, .issue.body,
-                  .comment.body]
+                  .comment.body, .review.body]
                  | map(select(. != null)) | join("\n")' \
             "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/bodyscan/body.txt"
           echo "scanning $(wc -l < "$RUNNER_TEMP/bodyscan/body.txt") line(s) of body text"

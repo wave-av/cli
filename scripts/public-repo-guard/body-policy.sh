@@ -121,7 +121,14 @@ check BLOCK private-key      '-----BEGIN [A-Z ]*PRIVATE KEY-----'            'Em
 # --- Infrastructure identifiers ----------------------------------------------
 # shellcheck disable=SC2016  # $CLOUDFLARE_ACCOUNT_ID is literal guidance text
 check BLOCK cf-account-id    'account_id\s*[:=]\s*["'"'"']?[0-9a-f]{32}'      'Hardcoded Cloudflare account_id — reference the env var instead'
-check BLOCK internal-ip      '100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}'  'Internal Tailscale-CGNAT IP (100.64.0.0/10) — internal fleet address'
+# The leading lookahead exempts the range's own DESIGNATION — the all-zero
+# network address 100.64.0.0, with or without a CIDR suffix. That string is the
+# public NAME of the CGNAT range (it appears in this rule's own message), and
+# infrastructure rules deliberately accept no allowlist marker, so matching it
+# would block every body that so much as quotes the gate's documentation, with
+# no remedy short of deleting the text. Every real fleet address — any host
+# with a non-zero octet — is still a hit.
+check BLOCK internal-ip      '(?!100\.64\.0\.0(?:/[0-9]{1,2})?(?![0-9]))100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}'  'Internal Tailscale-CGNAT IP (100.64.0.0/10) — internal fleet address'
 # shellcheck disable=SC2016  # $HOME is literal guidance text
 check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'    'Operator absolute home path — leaks identity and local layout'
 
