@@ -17,10 +17,16 @@
 #
 # Exit: 0 clean · 1 blocking violation · 2 scanner error (fail closed).
 #
-# Allowlisting: a line carrying `guard:allow <reason>` is exempt (an accidental
-# leak never carries the marker; a deliberate one is visible in a public diff).
-# The ABOUT-THE-CONTROL allowlist below additionally exempts the self-referential
-# PROSE rules only — never the credential-format or infrastructure rules.
+# Allowlisting: unlike the tree scanner, where a `guard:allow` marker lands in a
+# reviewable diff, a body is free-form text the untrusted author controls and can
+# edit at any time — an allowlist marker there is one edit away, not one review
+# away. So BOTH allowlists (the `guard:allow <reason>` marker and the
+# ABOUT-THE-CONTROL list below) apply ONLY to the self-referential PROSE rules
+# (internal-marker, private-repo-ops) — never to the credential-format or
+# infrastructure rules, which have NO author-controlled escape in a body. The
+# residual prose-rule escape is an accepted trade: the threat model is the
+# accidental paste, and a gate that blocks its own security discussions gets
+# switched off.
 set -uo pipefail
 
 FILE="${1:-}"
@@ -45,8 +51,10 @@ ABOUT_THE_CONTROL='(public-repo-guard|body-policy|content-policy|public-github-w
 
 # check <BLOCK|WARN> <name> <regex> <why> [about-the-control-exempt]
 #   Pass the literal string `about-the-control-exempt` as the 5th argument to let
-#   lines matching ABOUT_THE_CONTROL through. Only self-referential prose rules
-#   may opt in; hard-format rules must not.
+#   lines matching ABOUT_THE_CONTROL or carrying `guard:allow <reason>` through.
+#   Only self-referential prose rules may opt in; hard-format rules must not —
+#   in a body both escapes are author-controlled, so a live key stays a hit no
+#   matter what else its line says.
 check() {
   local sev="$1" name="$2" re="$3" why="$4" about_exempt="${5:-}"
   [[ -z "$re" ]] && { echo "::error::body-policy: internal bug — empty regex for rule '$name'"; exit 2; }
@@ -65,14 +73,21 @@ check() {
   # The filters fail closed too: exit 1 just means every line was filtered (fine),
   # but >=2 is a scanner error, and treating it as "no matches" would turn a broken
   # allowlist into a green check over real hits.
-  local matches
-  matches="$(printf '%s' "$raw" \
-    | rg -vN -- 'guard:allow[[:space:]]+[^[:space:]]')"; rc=$?
-  if (( rc >= 2 )); then
-    echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $rc) applying the guard:allow filter for rule '$name' — failing closed."
-    exit 2
-  fi
+  #
+  # BOTH allowlists live inside the opt-in branch: a body has no reviewable diff,
+  # so the untrusted author could otherwise neutralize any rule — including the
+  # live-credential rules — by appending `guard:allow <reason>` to the same line.
+  # Only the self-referential prose rules may be exempted, and only because their
+  # alternative (blocking every discussion of the gate itself) gets the gate
+  # switched off.
+  local matches="$raw"
   if [[ "$about_exempt" == "about-the-control-exempt" ]]; then
+    matches="$(printf '%s' "$matches" \
+      | rg -vN -- 'guard:allow[[:space:]]+[^[:space:]]')"; rc=$?
+    if (( rc >= 2 )); then
+      echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $rc) applying the guard:allow filter for rule '$name' — failing closed."
+      exit 2
+    fi
     matches="$(printf '%s' "$matches" | rg -vNiP -- "$ABOUT_THE_CONTROL")"; rc=$?
     if (( rc >= 2 )); then
       echo "::error title=public-repo-guard ($name)::ripgrep failed (exit $rc) applying the about-the-control allowlist for rule '$name' — failing closed."

@@ -62,6 +62,11 @@ expect 1 'AWS access key id' \
 # formats are never legitimate in prose — no gate word may exempt one.
 expect 1 'gate word on the same line does NOT exempt a credential' \
   "body-policy note: the leaked key was ${AKID_FIXTURE} here."
+# Regression: `guard:allow` once exempted EVERY rule, but a body has no reviewable
+# diff — the untrusted author can append the marker in the same edit that leaks.
+# The marker may only exempt the self-referential prose rules, never a credential.
+expect 1 'guard:allow does NOT exempt a credential in a body' \
+  "Key for the repro: ${AKID_FIXTURE} — guard:allow repro-example"
 expect 1 'internal tailscale IP' \
   'It resolves to 100.71.4.19 from inside the fleet.'
 # Regression: `read` stops at the first newline, so a newline-separated org variable
