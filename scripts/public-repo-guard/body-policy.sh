@@ -171,8 +171,11 @@ if [[ -n "${GUARD_PRIVATE_REPOS:-}" ]]; then
   _ALT=''
   # The org variable may be comma- OR newline-separated; `read` stops at the first
   # newline, which would silently configure only the first name and report a pass
-  # over the unscanned rest. Normalize newlines to spaces before splitting.
-  IFS=', ' read -r -a _PRIV <<< "${GUARD_PRIVATE_REPOS//$'\n'/ }"
+  # over the unscanned rest. Normalize newlines to spaces before splitting — and
+  # carriage returns too: a CRLF-stored value would otherwise leave an invisible
+  # \r glued to each name, so the built regex matches nothing and the gate
+  # fail-opens with no diagnostic.
+  IFS=', ' read -r -a _PRIV <<< "${GUARD_PRIVATE_REPOS//[$'\n'$'\r']/ }"
   for _name in "${_PRIV[@]}"; do
     [[ -z "$_name" ]] && continue
     # Regex-escape so metacharacters in a name match literally.

@@ -101,10 +101,11 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'      
 if [[ -n "${GUARD_PRIVATE_REPOS:-}" ]]; then
   # The org variable may be comma- OR newline-separated; `read` stops at the first
   # newline, which would silently configure only the first name and report a pass
-  # over the unscanned rest. Normalize newlines to spaces before splitting — kept
-  # in lockstep with body-policy.sh so both halves of the gate parse the same
-  # variable identically.
-  IFS=', ' read -r -a _PRIV <<< "${GUARD_PRIVATE_REPOS//$'\n'/ }"
+  # over the unscanned rest. Normalize newlines AND carriage returns to spaces
+  # before splitting (a CRLF-stored value would otherwise glue an invisible \r to
+  # each name and fail-open) — kept in lockstep with body-policy.sh so both
+  # halves of the gate parse the same variable identically.
+  IFS=', ' read -r -a _PRIV <<< "${GUARD_PRIVATE_REPOS//[$'\n'$'\r']/ }"
   for _name in "${_PRIV[@]}"; do
     [[ -z "$_name" ]] && continue
     # Regex-escape the name so metacharacters in a repo name (., -, etc.) match

@@ -78,6 +78,11 @@ expect 1 'host adjacent to the network address still blocks' \
 GUARD_PRIVATE_REPOS=$'wave-gateway\nwave-transports\nagent-money' \
 expect 1 'newline-separated GUARD_PRIVATE_REPOS still scans later names' \
   'The MOQ_JOIN_SECRET was added; wave-transports picks it up on deploy.'
+# Regression: a CRLF-stored variable once glued an invisible \r to every name, so
+# the built regex matched nothing and the gate fail-opened with no diagnostic.
+GUARD_PRIVATE_REPOS=$'wave-gateway\r\nwave-transports\r\nagent-money\r' \
+expect 1 'CRLF-separated GUARD_PRIVATE_REPOS still scans every name' \
+  'The MOQ_JOIN_SECRET was added; wave-transports picks it up on deploy.'
 
 # --- must PASS (precision — these keep the gate deployable) -------------------
 expect 0 'bare private-repo cross-reference' \
