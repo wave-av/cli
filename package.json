@@ -1,0 +1,80 @@
+{
+  "name": "@wave-av/cli",
+  "version": "1.0.8",
+  "description": "WAVE CLI \u2014 manage live streams, productions, and video infrastructure from your terminal. 34 command groups.",
+  "main": "./dist/index.js",
+  "type": "module",
+  "bin": {
+    "wave": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "wave",
+    "cli",
+    "streaming",
+    "video",
+    "broadcast",
+    "production",
+    "live",
+    "webrtc",
+    "srt",
+    "rtmp",
+    "terminal"
+  ],
+  "author": "WAVE Inc. <sdk@wave.online>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wave-av/cli.git",
+    "directory": "."
+  },
+  "homepage": "https://docs.wave.online/cli",
+  "bugs": {
+    "url": "https://github.com/wave-av/cli/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": false,
+    "registry": "https://registry.npmjs.org/"
+  },
+  "dependencies": {
+    "@wave-av/sdk": "^2.0.11",
+    "chalk": "^5.4.1",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
+    "conf": "^13.1.0",
+    "inquirer": "^12.3.2",
+    "keytar": "^7.9.0",
+    "open": "^10.1.0",
+    "ora": "^8.2.0",
+    "ws": "^8.18.0",
+    "yaml": "^2.7.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@sentry/node": "^9.4.0",
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^22.13.0",
+    "@types/ws": "^8.5.14",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}
