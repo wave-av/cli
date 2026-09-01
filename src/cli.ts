@@ -27,6 +27,7 @@ import { registerZoomCommands } from "./commands/zoom/index.js";
 import { registerVaultCommands } from "./commands/vault/index.js";
 import { registerMarketplaceCommands } from "./commands/marketplace/index.js";
 import { registerConnectCommands } from "./commands/connect/index.js";
+import { registerWebhookSubscriptionCommands, registerIdentityCommands } from "./commands/webhook-subscriptions/index.js";
 import { registerDistributionCommands } from "./commands/distribution/index.js";
 import { registerDesktopCommands } from "./commands/desktop/index.js";
 import { registerSignageCommands } from "./commands/signage/index.js";
@@ -127,6 +128,8 @@ export function createProgram(): Command {
   registerVaultCommands(program);
   registerMarketplaceCommands(program);
   registerConnectCommands(program);
+  registerWebhookSubscriptionCommands(program);
+  registerIdentityCommands(program);
   registerDistributionCommands(program);
   registerDesktopCommands(program);
   registerSignageCommands(program);
