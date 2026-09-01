@@ -1,19 +1,44 @@
 {
-  "schemaVersion": "1",
-  "repo": "wave-av/cli",
-  "version": "0.6.0",
-  "lifecycle": "beta",
-  "planeLayer": null,
-  "foundationPin": "v1",
-  "maintainers": [{ "team": "sdk" }],
-  "exposes": {
-    "cli": [{ "binary": "wave", "subcommands": ["auth", "feed", "clip", "transcribe", "agent"] }]
-  },
-  "consumes": {
-    "waveProducts": [
-      { "repo": "wave-av/api-gateway" }
-    ],
-    "foundationFrameworks": ["frameworks/platform-registry"]
-  },
-  "tags": ["cli", "public", "operator-tooling"]
+ "schemaVersion": "1",
+ "repo": "wave-av/cli",
+ "version": "0.7.0",
+ "lifecycle": "beta",
+ "planeLayer": null,
+ "foundationPin": "v1",
+ "maintainers": [
+  {
+   "team": "sdk"
+  }
+ ],
+ "exposes": {
+  "cli": [
+   {
+    "binary": "wave",
+    "subcommands": [
+     "auth",
+     "feed",
+     "clip",
+     "transcribe",
+     "agent",
+     "webhook-subscriptions",
+     "identity"
+    ]
+   }
+  ]
+ },
+ "consumes": {
+  "waveProducts": [
+   {
+    "repo": "wave-av/api-gateway"
+   }
+  ],
+  "foundationFrameworks": [
+   "frameworks/platform-registry"
+  ]
+ },
+ "tags": [
+  "cli",
+  "public",
+  "operator-tooling"
+ ]
 }
