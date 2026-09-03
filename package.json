@@ -1,7 +1,7 @@
 {
   "name": "@wave-av/cli",
   "version": "1.0.9",
-  "description": "WAVE CLI \u2014 manage live streams, productions, and video infrastructure from your terminal. 34 command groups.",
+  "description": "WAVE CLI: the terminal client for WAVE, media infrastructure for the agentic internet. Manage live streams, productions, and media routes from your terminal.",
   "main": "./dist/index.js",
   "type": "module",
   "bin": {
