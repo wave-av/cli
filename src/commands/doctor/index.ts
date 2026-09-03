@@ -138,6 +138,13 @@ export function registerDoctorCommands(program: Command): void {
           }
           console.log("");
         }
+
+        // Non-interactive/CI/agent callers need a real exit code, not just colored text: a
+        // failing check must fail the process. `process.exitCode` (not `process.exit()`) lets
+        // any pending stdout writes flush before Node exits.
+        if (checks.some((c) => c.status === "fail")) {
+          process.exitCode = 1;
+        }
       }),
     );
 }
