@@ -1,0 +1,19 @@
+package.json
+  s_31a7b23d59ea0c::t_5f3a6ba95f63e6 3,58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "fcfe3b77a92f7ac3f094e8d3e5fe0d14e3c3cd75",
+  "prompts": {},
+  "sessions": {
+    "s_31a7b23d59ea0c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a65fc143e44e3119c",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
