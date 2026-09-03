@@ -1,0 +1,102 @@
+# release.yml — publish @wave-av/cli to public npm on a `v*` tag.
+#
+# Fixes the 2026-09-03 P1: 1.0.8 shipped with an unpinned SDK dependency range that later
+# resolved to a broken SDK release (crashed every fresh install with "module is not defined
+# in ES module scope"). Until this file, publishing was a manual `npm publish` run from a
+# laptop with no build/test/smoke gate in front of it. This workflow is the missing release
+# path: every future version now ships through CI with a build + test + tarball smoke test
+# before anything reaches npmjs.
+#
+# Publish: push a tag `v<semver>` matching package.json "version" (e.g. `v1.0.9`). The job
+# fails closed if the tag and package.json disagree, so a stale tag can never publish the
+# wrong version.
+#
+# Auth: npm trusted publishing (OIDC via `id-token: write`) is used automatically once this
+# package is registered as a trusted publisher on npmjs for wave-av/cli + this workflow file.
+# Until that registration exists, the `NPM_TOKEN` repository secret is used as a classic
+# auth-token fallback (set only if present — an empty/missing secret does not touch .npmrc).
+# Either path works with zero further changes to this file.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: build, test, smoke, publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC) — unused when the NPM_TOKEN fallback applies
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Verify tag matches package.json version
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME ($TAG_VERSION) != package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci --include=dev
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Pack
+        run: npm pack
+
+      - name: Smoke test the packed tarball
+        # Installs the ACTUAL tarball npm publish would upload (not the source tree) into a
+        # throwaway project on the default public registry, then runs the built CLI exactly the
+        # way a fresh `npx @wave-av/cli` user would — this is the check 1.0.8 shipped without.
+        run: |
+          TARBALL="$(ls ./wave-av-cli-*.tgz)"
+          SMOKE_DIR="$(mktemp -d)"
+          cd "$SMOKE_DIR"
+          npm init -y >/dev/null
+          npm i "$GITHUB_WORKSPACE/$TARBALL"
+          VERSION="$(npx wave --version)"
+          EXPECTED="$(node -p "require('$GITHUB_WORKSPACE/package.json').version")"
+          echo "smoke: wave --version -> $VERSION (expected $EXPECTED)"
+          if [ "$VERSION" != "$EXPECTED" ]; then
+            echo "::error::tarball smoke test failed: got '$VERSION', expected '$EXPECTED'"
+            exit 1
+          fi
+
+      - name: Configure npm auth (NPM_TOKEN fallback only — OIDC trusted publishing needs no config here)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
+            echo "npm auth: using NPM_TOKEN secret fallback"
+          else
+            echo "npm auth: no NPM_TOKEN secret set — relying on OIDC trusted publishing"
+          fi
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
