@@ -1,6 +1,6 @@
 {
   "name": "@wave-av/cli",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "WAVE CLI: the terminal client for WAVE, media infrastructure for the agentic internet. Manage live streams, productions, and media routes from your terminal.",
   "main": "./dist/index.js",
   "type": "module",
@@ -55,7 +55,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
-    "@wave-av/sdk": "^2.0.11",
+    "@wave-av/sdk": "2.0.14",
     "chalk": "^5.4.1",
     "cli-table3": "^0.6.5",
     "commander": "^13.1.0",

@@ -23,8 +23,9 @@ export function registerAuthCommands(program: Command): void {
           return;
         }
 
-        // RFC 8628 Device Authorization Flow via the tested device-flow library
-        const baseUrl = process.env["WAVE_BASE_URL"] ?? "https://wave.online";
+        // RFC 8628 Device Authorization Flow via the tested device-flow library.
+        // The API host (OAuth device endpoints live under it), not the wave.online marketing site.
+        const baseUrl = process.env["WAVE_BASE_URL"] ?? "https://api.wave.online";
 
         const deviceAuth = await startDeviceAuth(baseUrl);
         const token = await pollForToken(
@@ -70,13 +71,20 @@ export function registerAuthCommands(program: Command): void {
       wrapCommand(async () => {
         const config = await loadConfig();
         const apiKey = await getApiKey(config.currentProject);
+        const authenticated = !!apiKey;
         const status = {
           project: config.currentProject,
-          authenticated: !!apiKey,
+          authenticated,
           organization: config.projects[config.currentProject]?.organizationName ?? "N/A",
           organizationId: config.projects[config.currentProject]?.organizationId ?? "N/A",
         };
         formatOutput(status, program.opts());
+
+        // Unauthenticated is a real failure for scripts/agents parsing this command's exit
+        // code — this previously always exited 0 regardless of auth state.
+        if (!authenticated) {
+          process.exitCode = 1;
+        }
       }),
     );
 
@@ -93,9 +101,11 @@ export function registerAuthCommands(program: Command): void {
         if (!apiKey) {
           console.error(chalk.red("Not authenticated. Run `wave auth login` first."));
           process.exit(1);
+          return;
         }
 
-        const baseUrl = config.projects[project]?.baseUrl ?? "https://wave.online";
+        // The API host, not the wave.online marketing site.
+        const baseUrl = config.projects[project]?.baseUrl ?? "https://api.wave.online";
         const res = await fetch(`${baseUrl}/api/v1/me`, {
           headers: { Authorization: `Bearer ${apiKey}` },
         });
@@ -107,6 +117,7 @@ export function registerAuthCommands(program: Command): void {
             ),
           );
           process.exit(1);
+          return;
         }
 
         const user = (await res.json()) as {
