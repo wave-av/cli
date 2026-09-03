@@ -71,7 +71,7 @@
   "devDependencies": {
     "@sentry/node": "^9.4.0",
     "@types/inquirer": "^9.0.7",
-    "@types/node": "^22.13.0",
+    "@types/node": "^26.0.0",
     "@types/ws": "^8.5.14",
     "tsup": "^8.0.0",
     "typescript": "^5.9.3",
