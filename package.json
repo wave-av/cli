@@ -58,7 +58,7 @@
     "@wave-av/sdk": "2.0.14",
     "chalk": "^5.4.1",
     "cli-table3": "^0.6.5",
-    "commander": "^13.1.0",
+    "commander": "^15.0.0",
     "conf": "^13.1.0",
     "inquirer": "^12.3.2",
     "keytar": "^7.9.0",
