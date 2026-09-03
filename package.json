@@ -56,7 +56,7 @@
   },
   "dependencies": {
     "@wave-av/sdk": "2.0.14",
-    "chalk": "^5.4.1",
+    "chalk": "^6.0.0",
     "cli-table3": "^0.6.5",
     "commander": "^13.1.0",
     "conf": "^13.1.0",
