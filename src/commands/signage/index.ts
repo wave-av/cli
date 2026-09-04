@@ -17,7 +17,7 @@ export function registerSignageCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.signage.displays.list({
+        const result = await client.signage.listDisplays({
           limit: parseInt(opts.limit),
         });
         formatOutput(result.data, program.opts());
@@ -32,7 +32,7 @@ export function registerSignageCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.signage.displays.register({
+        const result = await client.signage.registerDisplay({
           name: opts.name,
           location: opts.location,
         });
@@ -91,19 +91,30 @@ export function registerSignageCommands(program: Command): void {
 
   schedule
     .command("create")
-    .description("Create a content schedule")
-    .requiredOption("--display-id <displayId>", "Target display ID")
-    .requiredOption("--content-id <contentId>", "Content ID to schedule")
-    .option("--start <datetime>", "Start datetime (ISO 8601)")
-    .option("--end <datetime>", "End datetime (ISO 8601)")
+    .description("Schedule a playlist onto displays")
+    .requiredOption("--display-ids <ids>", "Comma-separated target display IDs")
+    .requiredOption("--playlist-id <playlistId>", "Playlist ID to schedule")
+    .requiredOption("--start <datetime>", "Start datetime (ISO 8601)")
+    .requiredOption("--end <datetime>", "End datetime (ISO 8601)")
+    .option("--days <days>", "Comma-separated days of week (0=Sunday)", "0,1,2,3,4,5,6")
+    .option("--recurring", "Repeat on the given days", false)
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.signage.schedules.create({
-          displayId: opts.displayId,
-          contentId: opts.contentId,
-          start: opts.start,
-          end: opts.end,
+        // Schedules attach a PLAYLIST to one or more displays; there is no
+        // per-content scheduling route.
+        const result = await client.signage.scheduleContent({
+          playlist_id: opts.playlistId,
+          display_ids: (opts.displayIds as string)
+            .split(",")
+            .map((d: string) => d.trim())
+            .filter(Boolean),
+          start_time: opts.start,
+          end_time: opts.end,
+          days_of_week: (opts.days as string)
+            .split(",")
+            .map((d: string) => parseInt(d.trim(), 10)),
+          recurring: Boolean(opts.recurring),
         });
         console.log(chalk.green(`Schedule created: ${result.id}`));
         formatOutput(result, program.opts());
@@ -117,10 +128,9 @@ export function registerSignageCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.signage.schedules.list({
-          displayId: opts.displayId,
-        });
-        formatOutput(result.data, program.opts());
+        // listSchedules returns a plain array, not a paginated envelope.
+        const result = await client.signage.listSchedules(opts.displayId);
+        formatOutput(result, program.opts());
       }),
     );
 }
