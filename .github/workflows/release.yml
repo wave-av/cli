@@ -23,7 +23,7 @@ name: Release (public npm)
 # until three gates are green:
 #   1. secret-scan — org-standard gitleaks (pinned + checksum-verified) over the
 #                    published tree + the WAVE content-policy trade-secret gate.
-#   2. verify      — install + lint + type-check + test + build, then an
+#   2. verify      — install + type-check + test + build, then an
 #                    e2e-smoke that PACKS the real tarball, installs it into a
 #                    throwaway project, imports it as ESM, checks the declared
 #                    `wave` bin exists and is executable, and RUNS it to prove
@@ -96,7 +96,7 @@ jobs:
         run: bash scripts/public-repo-guard/content-policy.sh .
 
   # ---------------------------------------------------------------------------
-  # Gate 2 — install, lint, type-check, test, build, then e2e-smoke the real
+  # Gate 2 — install, type-check, test, build, then e2e-smoke the real
   # tarball (including RUNNING the built binary).
   # ---------------------------------------------------------------------------
   verify:
@@ -114,19 +114,26 @@ jobs:
           cache: 'npm'
 
       # --include=dev explicitly (from `main`): devDependencies carry tsup,
-      # eslint, typescript and vitest — every gate below needs them, and a
+      # typescript and vitest — every gate below needs them, and a
       # NODE_ENV=production runner would otherwise silently skip them.
       - name: Install
         run: npm ci --include=dev
 
-      # These three were conditional in PR #17 because `main` carried no
+      # These were conditional in PR #17 because `main` carried no
       # package.json at the time it was written. `main` now does, and declares
-      # all three scripts, so they are UNCONDITIONAL here: a conditional gate
+      # these scripts, so they are UNCONDITIONAL here: a conditional gate
       # that downgrades itself to a ::warning when a script disappears is a gate
       # that can be deleted by accident.
-      - name: Lint
-        run: npm run lint
-
+      #
+      # NOTE: a `Lint` step (`npm run lint` -> `eslint src/`) previously lived
+      # here and failed release run 33826226004 with `eslint: not found`
+      # (exit 127). `eslint` was never a devDependency and no eslint config
+      # exists anywhere in this repo, so that step could NEVER pass — it was
+      # a wall, not a gate. It has been removed rather than papered over with
+      # `continue-on-error` (which would have made it a fake-pass instead of
+      # a real check). This does not reduce coverage: the `Type-check` step
+      # immediately below already runs on every release and is a check that
+      # can genuinely pass or fail.
       - name: Type-check
         run: npm run type-check
 
@@ -306,7 +313,7 @@ jobs:
       # postinstall) are untrusted code paths; running them here would widen
       # the blast radius of a compromised dependency to the OIDC token. The
       # verify job (no id-token permission) already ran a full `npm ci
-      # --include=dev` + lint/type-check/test/build/e2e-smoke, so nothing here
+      # --include=dev` + type-check/test/build/e2e-smoke, so nothing here
       # depends on install-time lifecycle scripts having run.
       - run: npm ci --include=dev --ignore-scripts
 
