@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { optionalOneOf } from "../../lib/options.js";
 import { confirmDestructive } from "../../lib/output/index.js";
 
 export function registerVaultCommands(program: Command): void {
@@ -14,15 +15,23 @@ export function registerVaultCommands(program: Command): void {
     .command("list")
     .description("List recordings in the vault")
     .option("--limit <n>", "Maximum results", "20")
-    .option("--status <status>", "Filter by status (active, archived)")
+    .option(
+      "--status <status>",
+      "Filter by status (recording, processing, ready, archived, failed)",
+    )
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const params: Record<string, unknown> = {
+        const result = await client.vault.list({
           limit: parseInt(opts.limit),
-        };
-        if (opts.status) params.status = opts.status;
-        const result = await client.vault.recordings.list(params);
+          status: optionalOneOf("--status", opts.status, [
+            "recording",
+            "processing",
+            "ready",
+            "archived",
+            "failed",
+          ]),
+        });
         formatOutput(result.data, program.opts());
       }),
     );
@@ -33,7 +42,7 @@ export function registerVaultCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.vault.recordings.get(id);
+        const result = await client.vault.get(id);
         formatOutput(result, program.opts());
       }),
     );
@@ -50,7 +59,7 @@ export function registerVaultCommands(program: Command): void {
         );
         if (!confirmed) return;
         const client = await getClient(program.opts());
-        await client.vault.recordings.delete(id);
+        await client.vault.remove(id);
         console.log(chalk.green(`Recording ${id} deleted.`));
       }),
     );

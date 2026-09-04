@@ -78,7 +78,7 @@ export function registerStreamCommands(program: Command): void {
         const confirmed = await confirmDestructive("delete", `stream ${id}`, program.opts());
         if (!confirmed) return;
         const client = await getClient(program.opts());
-        await client.pipeline.delete(id);
+        await client.pipeline.remove(id);
         console.log(chalk.green(`Stream ${id} deleted.`));
       }),
     );
@@ -115,7 +115,10 @@ export function registerStreamCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.pipeline.restart(id);
+        // There is no restart route. The compiler suggests `start`, but starting an
+        // already-running stream is not a restart: stop first, then start.
+        await client.pipeline.stop(id);
+        const result = await client.pipeline.start(id);
         console.log(chalk.green(`Stream ${id} restarted.`));
         formatOutput(result, program.opts());
       }),
@@ -127,7 +130,7 @@ export function registerStreamCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.pipeline.status(id);
+        const result = await client.pipeline.get(id);
         formatOutput(result, program.opts());
       }),
     );
@@ -138,7 +141,7 @@ export function registerStreamCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.pipeline.viewers(id);
+        const result = await client.pipeline.getViewerCount(id);
         formatOutput(result, program.opts());
       }),
     );
@@ -149,7 +152,8 @@ export function registerStreamCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.pipeline.metrics(id);
+        // Live stream metrics are reported through the health route.
+        const result = await client.pipeline.getHealth(id);
         formatOutput(result, program.opts());
       }),
     );
@@ -160,8 +164,8 @@ export function registerStreamCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.pipeline.recordings(id);
-        formatOutput(result, program.opts());
+        const result = await client.pipeline.listRecordings(id);
+        formatOutput(result.data, program.opts());
       }),
     );
 }
