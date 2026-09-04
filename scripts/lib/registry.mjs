@@ -25,6 +25,47 @@ async function getBuffer(url) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+/* ── URL construction ──────────────────────────────────────────────────────── */
+
+/**
+ * Package names and repo paths reach these functions from `license-manifest.json`, and are
+ * then spliced into registry URLs. Validate the shape and encode every reserved character —
+ * a partial escape (`name.replace('/', '%2F')` replaces only the FIRST slash) leaves a name
+ * able to reach a path this code did not intend to request.
+ */
+const NPM_NAME = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+const PYPI_NAME = /^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$/;
+const REPO_SLUG = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+const REPO_PATH = /^(?!\/)(?!.*\.\.)[A-Za-z0-9._\-\/]+$/;
+
+/** @param {string} name an npm package name, scoped or not */
+export function npmPackageUrl(name) {
+  if (typeof name !== 'string' || !NPM_NAME.test(name)) {
+    throw new Error(`refusing to fetch: "${name}" is not a valid npm package name`);
+  }
+  // The registry addresses a scoped package as one path segment with the slash escaped.
+  return `${NPM_REGISTRY}/${name.replaceAll('/', '%2F')}`;
+}
+
+/** @param {string} name a PyPI project name */
+export function pypiProjectUrl(name) {
+  if (typeof name !== 'string' || !PYPI_NAME.test(name)) {
+    throw new Error(`refusing to fetch: "${name}" is not a valid PyPI project name`);
+  }
+  return `${PYPI}/${encodeURIComponent(name)}/json`;
+}
+
+/**
+ * @param {string} repo "<owner>/<name>"
+ * @param {string} path a repo-relative file path; no leading slash, no ".." segment
+ */
+export function rawGithubUrl(repo, path) {
+  if (!REPO_SLUG.test(repo)) throw new Error(`refusing to fetch: bad repo slug "${repo}"`);
+  if (!REPO_PATH.test(path)) throw new Error(`refusing to fetch: bad repo path "${path}"`);
+  const segments = path.split('/').map(encodeURIComponent).join('/');
+  return `https://raw.githubusercontent.com/${repo}/HEAD/${segments}`;
+}
+
 /**
  * Inspect the latest published version of an npm package.
  * Always talks to registry.npmjs.org explicitly — a scoped `.npmrc` entry pointing
@@ -32,7 +73,7 @@ async function getBuffer(url) {
  * @param {string} name
  */
 export async function inspectNpm(name) {
-  const doc = await getJson(`${NPM_REGISTRY}/${name.replace('/', '%2F')}`);
+  const doc = await getJson(npmPackageUrl(name));
   const version = doc['dist-tags']?.latest;
   const manifest = doc.versions?.[version];
   if (!manifest) throw new Error(`${name}: no latest version in registry document`);
@@ -64,7 +105,7 @@ export async function inspectNpm(name) {
  * @param {string} name
  */
 export async function inspectPyPI(name) {
-  const doc = await getJson(`${PYPI}/${name}/json`);
+  const doc = await getJson(pypiProjectUrl(name));
   const info = doc.info ?? {};
   const wheel = (doc.urls ?? []).find((u) => u.packagetype === 'bdist_wheel');
   const licenseClassifier =
@@ -142,7 +183,7 @@ export async function inspectSource(spec) {
     return { available: false, reason: spec || 'no source recorded' };
   }
   const [repo, path] = [spec.slice(0, spec.indexOf(':')), spec.slice(spec.indexOf(':') + 1)];
-  const raw = (p) => `https://raw.githubusercontent.com/${repo}/HEAD/${p}`;
+  const raw = (p) => rawGithubUrl(repo, p);
 
   try {
     const manifest = await getText(raw(path));

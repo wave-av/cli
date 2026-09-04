@@ -17,7 +17,14 @@ import { deflateRawSync } from 'node:zlib';
 import { detectSpdxFromText, UNKNOWN } from './lib/spdx.mjs';
 import { auditRepo, readRepoTruth, dependencyLicenses } from './lib/audit.mjs';
 import { readTarGz, readZip } from './lib/archive.mjs';
-import { artifactProblems, sourceProblems, pyprojectLicense } from './lib/registry.mjs';
+import {
+  artifactProblems,
+  sourceProblems,
+  pyprojectLicense,
+  npmPackageUrl,
+  pypiProjectUrl,
+  rawGithubUrl,
+} from './lib/registry.mjs';
 import { packedFileList, renderLedger } from './license-truth.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -385,6 +392,35 @@ describe('sourceProblems', () => {
 
   it('reports nothing — never a pass — when the source could not be resolved', () => {
     expect(sourceProblems({ declared: 'MIT' }, { available: false, reason: 'no source recorded' })).toEqual([]);
+  });
+});
+
+describe('URL construction', () => {
+  it('escapes EVERY slash in a package name, not just the first', () => {
+    expect(npmPackageUrl('@wave-av/cli')).toBe('https://registry.npmjs.org/@wave-av%2Fcli');
+    expect(npmPackageUrl('chalk')).toBe('https://registry.npmjs.org/chalk');
+  });
+
+  it('refuses a package name that could reach a path this code did not intend', () => {
+    for (const bad of ['@a/b/../../etc', '../../etc/passwd', '@a/b?x=1', 'a b', '', null]) {
+      expect(() => npmPackageUrl(bad)).toThrow(/not a valid npm package name/);
+    }
+  });
+
+  it('refuses a PyPI project name with path or query characters', () => {
+    expect(pypiProjectUrl('wave-sdk')).toBe('https://pypi.org/pypi/wave-sdk/json');
+    for (const bad of ['wave/sdk', '../wave', 'wave?x', '']) {
+      expect(() => pypiProjectUrl(bad)).toThrow(/not a valid PyPI project name/);
+    }
+  });
+
+  it('refuses a repo path that escapes the repository', () => {
+    expect(rawGithubUrl('wave-av/sdks', 'sdk-python/pyproject.toml')).toBe(
+      'https://raw.githubusercontent.com/wave-av/sdks/HEAD/sdk-python/pyproject.toml'
+    );
+    expect(() => rawGithubUrl('wave-av/sdks', '../secrets')).toThrow(/bad repo path/);
+    expect(() => rawGithubUrl('wave-av/sdks', '/etc/passwd')).toThrow(/bad repo path/);
+    expect(() => rawGithubUrl('not-a-slug', 'LICENSE')).toThrow(/bad repo slug/);
   });
 });
 
