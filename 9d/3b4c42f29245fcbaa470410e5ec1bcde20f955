@@ -1,0 +1,23 @@
+LICENSE-LEDGER.md
+  s_67f12ed79c07f5::t_cc2d46bca6f514 5
+scripts/lib/registry.mjs
+  s_67f12ed79c07f5::t_f91a1d3e837438 28-68,76,108,186
+scripts/license-audit.test.mjs
+  s_67f12ed79c07f5::t_7a26de43c8ac08 20-27,398-426
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "9d3b4c42f29245fcbaa470410e5ec1bcde20f955",
+  "prompts": {},
+  "sessions": {
+    "s_67f12ed79c07f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8ea0811073fa8c20",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
