@@ -15,7 +15,7 @@ export function registerConnectCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.connect.integrations({
+        const result = await client.connect.list({
           limit: parseInt(opts.limit),
         });
         formatOutput(result.data, program.opts());
@@ -29,8 +29,10 @@ export function registerConnectCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string, opts) => {
         const client = await getClient(program.opts());
-        const settings = opts.settings ? JSON.parse(opts.settings as string) : undefined;
-        const result = await client.connect.configure(id, { settings });
+        // `--settings` IS the integration config; it must not be wrapped in another
+        // object, or the whole payload lands under a bogus "settings" key.
+        const settings = opts.settings ? JSON.parse(opts.settings as string) : {};
+        const result = await client.connect.configure(id, settings);
         console.log(chalk.green(`Integration ${id} configured.`));
         formatOutput(result, program.opts());
       }),
@@ -42,7 +44,7 @@ export function registerConnectCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.connect.status(id);
+        const result = await client.connect.get(id);
         formatOutput(result, program.opts());
       }),
     );
@@ -59,7 +61,7 @@ export function registerConnectCommands(program: Command): void {
         );
         if (!confirmed) return;
         const client = await getClient(program.opts());
-        await client.connect.disconnect(id);
+        await client.connect.disable(id);
         console.log(chalk.green(`Integration ${id} disconnected.`));
       }),
     );
