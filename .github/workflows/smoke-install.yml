@@ -50,21 +50,27 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
-    # DERIVED 2026-09-04: measured against the last 21 runs of this workflow (job-run
-    # history via `gh run list`/`gh run view --json jobs`), 5 of 42 smoke matrix-leg
-    # runs hit the 10-minute cap exactly (job duration 10m02s-10m16s, reported by GH
-    # as conclusion=cancelled with "exceeded the maximum execution time of 10m0s" —
-    # NOT a concurrency cancel, which finishes in seconds). Several more finished at
-    # 7-9.5 minutes, i.e. one slow registry response from also timing out. Root cause:
-    # this job does two full `npm install`s from a cold cache (the root `npm ci` to
-    # build, then a lockfile-less `npm i` of the packed tarball into a throwaway repo
-    # to smoke-test the real registry resolution) - a local cold `npm ci --include=dev`
-    # for this repo measured 2m54s-6-7m depending on runner/registry latency, and the
-    # second install is not smaller. The primary fix is `cache: npm` (below) + npm's
-    # own --prefer-offline flag, which should make most runs fast; this timeout is
-    # sized for the residual cold-cache case (first run after this change, or any run
-    # where the lockfile hash changes and the cache is a genuine miss): observed worst
-    # case 10m16s + ~45% headroom for a slower runner or registry outage, rounded to 15.
+    # DERIVED 2026-09-04, re-measured after the first mitigation: the ORIGINAL
+    # `timeout-minutes: 10` was hit exactly 5 of 42 smoke matrix-leg runs (job
+    # duration 10m02s-10m16s, GH-reported as conclusion=cancelled with "exceeded
+    # the maximum execution time of 10m0s" - NOT a concurrency cancel, which
+    # finishes in seconds) across the last 21 workflow runs (`gh run list`/`gh
+    # run view --json jobs`). Adding `cache: npm` alone did NOT fix it: 8
+    # consecutive dispatched runs afterward still ranged 5m16s-14m19s per leg,
+    # because this job's `registry-url: https://registry.npmjs.org` line (now
+    # removed) makes actions/setup-node write an authenticated .npmrc with a
+    # placeholder NODE_AUTH_TOKEN even though this job only ever reads public
+    # packages - never publishes. The `unit` job below runs the IDENTICAL
+    # `npm ci` against the IDENTICAL lockfile on the IDENTICAL node version
+    # (22) WITHOUT registry-url and consistently took 11s-26s, cold, no cache,
+    # across every run measured. npm's default registry is already
+    # registry.npmjs.org with no config at all, so registry-url bought this
+    # job nothing but the slow authenticated path. timeout-minutes stays at 15
+    # (not reverted to 10) as headroom for a genuinely degraded runner/registry,
+    # since 15 comfortably covers the pre-fix worst case (10m16s) with ~45%
+    # margin, and the real fix (removing registry-url) is what should keep
+    # actual runs in the tens-of-seconds range - see PR for the re-measured
+    # pass/fail numbers.
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -78,7 +84,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          registry-url: https://registry.npmjs.org
           cache: npm
 
       - name: Install dependencies
