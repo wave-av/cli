@@ -15,15 +15,15 @@ export function registerAudienceCommands(program: Command): void {
     .description("Create an audience poll")
     .requiredOption("--question <question>", "Poll question")
     .requiredOption("--options <options>", "Comma-separated poll options")
-    .option("--stream-id <streamId>", "Attach to a stream")
+    .requiredOption("--stream-id <streamId>", "Stream to attach the poll to")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
         const options = (opts.options as string).split(",").map((o: string) => o.trim());
-        const result = await client.audience.polls.create({
+        const result = await client.audience.createPoll({
           question: opts.question,
           options,
-          streamId: opts.streamId,
+          stream_id: opts.streamId,
         });
         console.log(chalk.green(`Poll created: ${result.id}`));
         formatOutput(result, program.opts());
@@ -50,7 +50,7 @@ export function registerAudienceCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.audience.polls.results(id);
+        const result = await client.audience.getPollResults(id);
         formatOutput(result, program.opts());
       }),
     );
@@ -61,7 +61,7 @@ export function registerAudienceCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.audience.polls.close(id);
+        const result = await client.audience.closePoll(id);
         console.log(chalk.green(`Poll ${id} closed.`));
         formatOutput(result, program.opts());
       }),
@@ -73,13 +73,13 @@ export function registerAudienceCommands(program: Command): void {
   questions
     .command("create")
     .description("Open a Q&A session")
-    .option("--stream-id <streamId>", "Attach to a stream")
+    .requiredOption("--stream-id <streamId>", "Stream to attach the Q&A session to")
     .option("--moderated", "Enable moderation", false)
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.audience.questions.create({
-          streamId: opts.streamId,
+        const result = await client.audience.createQA({
+          stream_id: opts.streamId,
           moderated: opts.moderated,
         });
         console.log(chalk.green(`Q&A session created: ${result.id}`));
@@ -94,10 +94,9 @@ export function registerAudienceCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.audience.questions.list({
-          sessionId: opts.sessionId,
-        });
-        formatOutput(result.data, program.opts());
+        // The SDK exposes questions as part of the Q&A session, not a separate list route.
+        const session = await client.audience.getQA(opts.sessionId);
+        formatOutput(session.questions, program.opts());
       }),
     );
 
