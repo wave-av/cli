@@ -1,0 +1,100 @@
+name: smoke-install
+
+# Regression guard for the 2026-09-01 P0: `npm i @wave-av/cli` resolved a broken
+# `@wave-av/sdk` release (2.1.2) through the `^2.0.11` semver range and every invocation
+# died before argv parsing with a module-resolution error. That class of bug — a real,
+# already-published dependency drifting a fresh install into a broken combination — only
+# shows up when you install the ACTUAL published tarball against the ACTUAL registry, so
+# this workflow builds the package, packs it, and installs the tarball into a throwaway
+# project exactly the way a real user's `npm install` would. Unit tests and type-check
+# cannot catch this: they run against the local, already-linked node_modules tree.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack tarball
+        run: npm pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Fresh install from the packed tarball (real registry, real deps)
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          cd "$RUNNER_TEMP/smoke"
+          npm init -y >/dev/null
+          tarball=$(ls "$RUNNER_TEMP"/wave-av-cli-*.tgz | head -n1)
+          npm i "$tarball"
+
+      - name: wave --version / --help (module-resolution smoke)
+        run: |
+          cd "$RUNNER_TEMP/smoke"
+          npx --yes wave --version
+          npx --yes wave --help >/dev/null
+
+      - name: wave status / wave doctor (live gateway reachability)
+        working-directory: ${{ runner.temp }}/smoke
+        env:
+          WAVE_GATEWAY_API_KEY: ${{ secrets.WAVE_GATEWAY_API_KEY }}
+        run: |
+          if [ -z "$WAVE_GATEWAY_API_KEY" ]; then
+            echo "skipped: WAVE_GATEWAY_API_KEY absent (fork or unset)"
+            exit 0
+          fi
+          export WAVE_API_KEY="$WAVE_GATEWAY_API_KEY"
+
+          # Pass criteria: the process ran and produced a normal CLI response - a clean
+          # exit, or a real HTTP-level auth/scope response (401/402/403 SCOPE_INSUFFICIENT),
+          # or the command's own "not authenticated" business-logic exit. Fail criteria: the
+          # output looks like the install-time crash class this workflow exists to catch -
+          # a module-resolution / ESM-vs-CJS error that means the package never even started.
+          run_check() {
+            label="$1"
+            shift
+            set +e
+            out=$("$@" 2>&1)
+            code=$?
+            set -e
+            echo "$label exit=$code"
+            echo "$out" | head -n 20
+            if echo "$out" | grep -qE 'is not defined in ES module scope|Cannot find module|ERR_MODULE_NOT_FOUND|ERR_REQUIRE_ESM|ReferenceError|SyntaxError: Unexpected token|Cannot find package'; then
+              echo "::error::$label failed with a module-resolution class error"
+              return 1
+            fi
+            echo "$label: process started and produced a normal CLI response - pass"
+            return 0
+          }
+
+          run_check "wave doctor" npx --yes wave doctor
+          run_check "wave status" npx --yes wave status

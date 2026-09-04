@@ -2,43 +2,47 @@ name: Release (public npm)
 
 # Gated public-release path for @wave-av/cli.
 #
-# ****************************************************************************
-# ** KNOWN GAP AT THE TIME THIS WORKFLOW WAS ADDED (see PR description): **
-# ** `main` in this repo currently carries NO `package.json` and no `src/` — **
-# ** only governance scaffolding (AGENTS.md, capabilities.json, guard CI). **
-# ** @wave-av/cli was hand-published to npm from a checkout that was never **
-# ** committed here. Until a package.json + build (tsup/eslint/vitest, per **
-# ** the shape already published as @wave-av/cli@1.0.8) lands on `main`, **
-# ** the `verify` job below will fail at `npm ci` (no manifest to install). **
-# ** This workflow adds the PATH; it does not by itself make the repo **
-# ** publishable. Script names below are taken from the package.json that **
-# ** WAS actually published for 1.0.8 (fetched from the npm registry), not **
-# ** guessed. **
-# ****************************************************************************
+# This file is the UNION of two release.yml versions written in parallel that
+# collided add/add: `main` (PR #44, a linear single-job workflow) and PR #17
+# (this branch, a 3-job gated workflow modelled on wave-av/adk's release.yml).
+# Every gate from both sides is preserved; the full side-by-side ledger is in
+# PR #17's description. Action pins take the NEWER of the two sides and never
+# downgrade either: checkout v6.0.3 (PR #17's) and setup-node v7.0.0 (main's).
+#
+# The one genuinely NEW check is the three-way version-parity assertion in
+# verify/e2e-smoke. `main`'s smoke was the only side that EXECUTED the built
+# binary; PR #17 only checked the bin file existed. @wave-av/cli@1.0.8 shipped
+# to npm printing "v1.0.0" from a hardcoded string while package.json said
+# 1.0.8 — an existence check would have shipped that bug again. The smoke now
+# asserts package.json == `wave --version` == the version the startup BANNER
+# prints. The banner is a separate code path (src/cli.ts printBanner(), only
+# rendered outside CI/agent mode) and is the surface the defect was visible on,
+# so it is asserted explicitly rather than assumed to follow from --version.
 #
 # Trigger: pushing a `v*` git tag (e.g. `v1.0.9`). Nothing reaches public npm
 # until three gates are green:
 #   1. secret-scan — org-standard gitleaks (pinned + checksum-verified) over the
 #                    published tree + the WAVE content-policy trade-secret gate.
-#   2. verify      — install + lint + type-check + build, then an e2e-smoke that
-#                    PACKS the real tarball, installs it into a throwaway
-#                    project, imports it as ESM, and checks the declared `wave`
-#                    bin exists and is executable.
+#   2. verify      — install + lint + type-check + test + build, then an
+#                    e2e-smoke that PACKS the real tarball, installs it into a
+#                    throwaway project, imports it as ESM, checks the declared
+#                    `wave` bin exists and is executable, and RUNS it to prove
+#                    three-way version parity.
 #   3. publish     — only after 1+2 pass. The tag version MUST equal
 #                    package.json version, and the npm dist-tag is derived from
 #                    the version: any prerelease -> `next`, stable -> `latest`,
 #                    so a prerelease can never take `latest` by accident.
 #
-# Modelled directly on wave-av/adk's .github/workflows/release.yml, which
-# published the OIDC-provenance @wave-av/adk@1.0.15 today. Action pins are
-# copied from it deliberately: that file has demonstrably run and published.
-#
-# Auth is npm OIDC trusted publishing (id-token: write on the publish job
-# only) — there is NO NODE_AUTH_TOKEN / NPM_TOKEN anywhere in this file. The
-# Trusted Publisher for @wave-av/cli (org: wave-av, repo: cli, workflow:
-# release.yml) must be registered on npmjs.com BEFORE the first `v*` tag is
-# pushed, or the publish step fails with `npm error code EOTP` (a 2FA prompt)
-# — that is how an unregistered/mismatched binding actually presents.
+# Auth: npm OIDC trusted publishing (id-token: write on the publish job only) is
+# the intended path — the Trusted Publisher for @wave-av/cli (org: wave-av,
+# repo: cli, workflow: release.yml) must be registered on npmjs.com BEFORE the
+# first `v*` tag is pushed. `main` also shipped an NPM_TOKEN classic-auth
+# fallback and it is KEPT here: without it, a tag pushed before that
+# registration exists fails with no path forward. The fallback only engages when
+# the secret is actually set, and `--provenance` still produces a signed
+# attestation on that path (it needs id-token: write, which this job holds), so
+# SUPPLY-001 holds either way. Drop the fallback step once the Trusted Publisher
+# is registered.
 
 on:
   push:
@@ -92,7 +96,8 @@ jobs:
         run: bash scripts/public-repo-guard/content-policy.sh .
 
   # ---------------------------------------------------------------------------
-  # Gate 2 — build, lint, type-check, then e2e-smoke the real tarball.
+  # Gate 2 — install, lint, type-check, test, build, then e2e-smoke the real
+  # tarball (including RUNNING the built binary).
   # ---------------------------------------------------------------------------
   verify:
     name: Build + e2e-smoke
@@ -103,46 +108,33 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: 'npm'
 
-      - run: npm ci
+      # --include=dev explicitly (from `main`): devDependencies carry tsup,
+      # eslint, typescript and vitest — every gate below needs them, and a
+      # NODE_ENV=production runner would otherwise silently skip them.
+      - name: Install
+        run: npm ci --include=dev
 
-      # Script names below are taken from the package.json that was actually
-      # published as @wave-av/cli@1.0.8 (build/lint/type-check/test all exist
-      # there today). Each is still run conditionally: if a future edit to
-      # package.json drops one, this gate should say so plainly rather than
-      # hard-failing on a missing script.
-      - name: Lint (if the package declares it)
-        run: |
-          set -euo pipefail
-          if node -e "const s=require('./package.json').scripts||{}; process.exit(s.lint?0:1)"; then
-            npm run lint
-          else
-            echo "::warning title=no lint script::package.json declares no \"lint\" script"
-          fi
+      # These three were conditional in PR #17 because `main` carried no
+      # package.json at the time it was written. `main` now does, and declares
+      # all three scripts, so they are UNCONDITIONAL here: a conditional gate
+      # that downgrades itself to a ::warning when a script disappears is a gate
+      # that can be deleted by accident.
+      - name: Lint
+        run: npm run lint
 
-      - name: Type-check (if the package declares it)
-        run: |
-          set -euo pipefail
-          if node -e "const s=require('./package.json').scripts||{}; process.exit(s['type-check']?0:1)"; then
-            npm run type-check
-          else
-            echo "::warning title=no type-check script::package.json declares no \"type-check\" script"
-          fi
+      - name: Type-check
+        run: npm run type-check
 
-      - name: Unit tests (if the package declares any)
-        run: |
-          set -euo pipefail
-          if node -e "const s=require('./package.json').scripts||{}; process.exit(s.test?0:1)"; then
-            npm run test
-          else
-            echo "::warning title=no unit tests::package.json declares no \"test\" script - gate 2 is lint + type-check + build + e2e-smoke only"
-          fi
+      - name: Unit tests
+        run: npm test
 
-      - run: npm run build
+      - name: Build
+        run: npm run build
 
       # Gate 1 (secret-scan) only scans the checked-out source tree, BEFORE
       # `npm run build` runs. Anything the build step generates or bundles
@@ -172,30 +164,40 @@ jobs:
             echo "::warning title=no dist directory::npm run build produced no dist/ - nothing to scan"
           fi
 
-      - name: e2e-smoke — pack + install + import the real tarball
+      - name: e2e-smoke — pack, install and RUN the real tarball
         run: |
           set -euo pipefail
+          EXPECTED="$(node -p "require('./package.json').version")"
           TARBALL="$(npm pack --silent | tail -n1)"
           TARBALL="$PWD/$TARBALL"
-          echo "packed: $TARBALL"
+          echo "packed: $TARBALL (expected version $EXPECTED)"
           # Disposable project, outside the workspace, with lifecycle scripts
-          # disabled: this installs a freshly built artifact and we only want to
-          # prove it RESOLVES, not to execute anything it ships.
+          # disabled: this installs a freshly built artifact and we do not want
+          # its dependency install hooks executing on the runner. npm still
+          # links declared bins under --ignore-scripts, so the bin below is
+          # genuinely the one a `npm i -g @wave-av/cli` user would get.
           SMOKE="$(mktemp -d)"
           cd "$SMOKE"
           npm init -y >/dev/null 2>&1
           npm install --no-save --ignore-scripts "$TARBALL" >/dev/null 2>&1
-          # @wave-av/cli publishes "type": "module" with no `require` export
-          # condition (per the package.json published as 1.0.8) — it is
-          # ESM-only. A CJS require() smoke test would therefore fail on a
-          # correctly-built package, so only ESM import is exercised here.
-          node --input-type=module -e "import * as m from '@wave-av/cli'; if(!m||Object.keys(m).length===0){console.error('ESM import produced no exports');process.exit(1);} console.log('ESM ok - exports:',Object.keys(m).length);"
+
+          # ESM resolution. @wave-av/cli is "type": "module" with no `require`
+          # export condition, so a CJS require() smoke would fail on a correctly
+          # built package — only the ESM path is exercised.
+          #
+          # NOTE: this deliberately RESOLVES rather than IMPORTS. package.json
+          # sets "main" and "bin.wave" to the SAME file (./dist/index.js), so
+          # `import * as m from '@wave-av/cli'` does not import a library — it
+          # EXECUTES the CLI, which with no argv prints help and exits non-zero.
+          # Measured: that import exits 1 against a correctly built 1.0.9, so an
+          # import-and-count-exports assertion can never pass here. Resolution
+          # proves the entry point is declared and present; the bin run below
+          # proves the ESM graph actually loads (which is the "module is not
+          # defined in ES module scope" class of break that took down 1.0.8).
+          node --input-type=module -e "const u=import.meta.resolve('@wave-av/cli'); if(!u){console.error('ESM resolution failed for @wave-av/cli');process.exit(1);} console.log('ESM resolve ok:',u);"
+
           # The declared `wave` bin actually exists in the packed tree and is
-          # executable. This is a CLI package — the bin IS the product — so
-          # this check is load-bearing, not incidental. It only checks
-          # existence + the executable permission bit; it does not invoke the
-          # bin, consistent with the "resolve, don't execute" smoke-test
-          # philosophy above.
+          # executable. This is a CLI package — the bin IS the product.
           PKG_DIR="$SMOKE/node_modules/@wave-av/cli" node -e "
             const fs=require('fs'),path=require('path');
             const dir=process.env.PKG_DIR;
@@ -203,7 +205,7 @@ jobs:
             const bins=typeof pkg.bin==='string'?{[pkg.name]:pkg.bin}:(pkg.bin||{});
             const names=Object.keys(bins);
             if(names.length===0){console.error('no bin declared - @wave-av/cli is expected to ship a bin');process.exit(1);}
-            if(!bins.wave){console.error('no "wave" bin declared - @wave-av/cli is expected to ship a bin named exactly "wave", found: '+names.join(', '));process.exit(1);}
+            if(!bins.wave){console.error('no \"wave\" bin declared - @wave-av/cli is expected to ship a bin named exactly \"wave\", found: '+names.join(', '));process.exit(1);}
             for(const n of names){
               const f=path.join(dir,bins[n]);
               if(!fs.existsSync(f)){console.error('declared bin missing from tarball: '+n+' -> '+bins[n]);process.exit(1);}
@@ -211,14 +213,52 @@ jobs:
               console.log('bin ok (exists + executable):',n,'->',bins[n]);
             }"
 
+          # --- VERSION TRUTH (VER-001 / ART-001) -------------------------------
+          # 1.0.8 shipped to npm with `--version` hardcoded to "1.0.0". Existence
+          # checks cannot catch that; only running the artifact can. Run the
+          # INSTALLED bin, not the source tree.
+          WAVE_BIN="$SMOKE/node_modules/.bin/wave"
+          test -x "$WAVE_BIN" || { echo "::error::no executable bin linked at $WAVE_BIN"; exit 1; }
+
+          ACTUAL_VERSION="$("$WAVE_BIN" --version 2>&1 | tr -d '[:space:]')"
+          echo "smoke: wave --version -> '$ACTUAL_VERSION' (expected '$EXPECTED')"
+          if [ "$ACTUAL_VERSION" != "$EXPECTED" ]; then
+            echo "::error::version parity failed: 'wave --version' printed '$ACTUAL_VERSION', package.json says '$EXPECTED'"
+            exit 1
+          fi
+
+          # The BANNER is a separate code path (src/cli.ts printBanner()) that
+          # renders its own `v<version>` string, and it is suppressed whenever
+          # the CLI detects CI or an agent — which is exactly the case on this
+          # runner. Clear those signals so the banner actually renders, then
+          # assert the version it prints. This is the surface the 1.0.8 defect
+          # was visible on; asserting `--version` alone would not have caught a
+          # banner that had drifted independently.
+          BANNER_OUT="$(env -u CI -u GITHUB_ACTIONS -u GITHUB_ACTION -u VERCEL -u BUILDKITE \
+                            -u GITLAB_CI -u CIRCLECI -u WAVE_AGENT -u CLAUDE_CODE \
+                            -u CURSOR_SESSION -u AIDER_SESSION -u CONTINUE_SESSION \
+                            NO_COLOR=1 "$WAVE_BIN" --help 2>&1 || true)"
+          if ! printf '%s' "$BANNER_OUT" | grep -qF "Enterprise Streaming Platform"; then
+            echo "::error::banner did not render — cannot assert banner version parity. Output was:"
+            printf '%s\n' "$BANNER_OUT"
+            exit 1
+          fi
+          if ! printf '%s' "$BANNER_OUT" | grep -qF "v$EXPECTED"; then
+            echo "::error::banner version parity failed: startup banner does not print 'v$EXPECTED'. Banner line was:"
+            printf '%s\n' "$BANNER_OUT" | grep -F "Enterprise Streaming Platform" || true
+            exit 1
+          fi
+          echo "smoke: banner prints v$EXPECTED — three-way parity OK (package.json == --version == banner)"
+
   # ---------------------------------------------------------------------------
   # Gate 3 — publish. Runs ONLY if secret-scan + verify are green.
   #
-  # Auth: npm OIDC trusted publishing (no long-lived token). The runner mints a
-  # short-lived OIDC identity token (id-token: write) and npm (>= 11.5.1)
-  # exchanges it for a scoped, single-use publish credential -- provided
-  # @wave-av/cli has a Trusted Publisher configured on npmjs.com
-  # (org: wave-av, repo: cli, workflow: release.yml). No NPM_TOKEN is used.
+  # Auth: npm OIDC trusted publishing (no long-lived token) is the intended
+  # path. The runner mints a short-lived OIDC identity token (id-token: write)
+  # and npm (>= 11.5.1) exchanges it for a scoped, single-use publish credential
+  # -- provided @wave-av/cli has a Trusted Publisher configured on npmjs.com
+  # (org: wave-av, repo: cli, workflow: release.yml). `main`'s NPM_TOKEN
+  # fallback is retained for the window before that registration exists.
   # ---------------------------------------------------------------------------
   publish:
     name: Publish to npm (gated)
@@ -233,17 +273,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
       # Trusted publishing (OIDC) requires npm >= 11.5.1; Node 22 ships an older
-      # npm. Upgrade the CLI on the runner, then PROVE the floor is met rather
-      # than assuming the upgrade did what it said. Pinned rather than @latest:
-      # this job holds id-token: write, so it should not execute whatever npm
-      # publishes next.
+      # npm (measured: Node v22.14.0 bundles npm 10.9.2 — below the floor, so
+      # the OIDC path could never have engaged without this step). Upgrade the
+      # CLI on the runner, then PROVE the floor is met rather than assuming the
+      # upgrade did what it said. Pinned rather than @latest: this job holds
+      # id-token: write, so it should not execute whatever npm publishes next.
       - name: Upgrade npm to a trusted-publishing-capable CLI (>= 11.5.1)
         run: |
           set -euo pipefail
@@ -264,10 +305,10 @@ jobs:
       # publish credential). Dependency lifecycle scripts (preinstall/install/
       # postinstall) are untrusted code paths; running them here would widen
       # the blast radius of a compromised dependency to the OIDC token. The
-      # verify job (no id-token permission) already ran a full `npm ci` +
-      # build/lint/type-check/test, so nothing here depends on install-time
-      # lifecycle scripts having run.
-      - run: npm ci --ignore-scripts
+      # verify job (no id-token permission) already ran a full `npm ci
+      # --include=dev` + lint/type-check/test/build/e2e-smoke, so nothing here
+      # depends on install-time lifecycle scripts having run.
+      - run: npm ci --include=dev --ignore-scripts
 
       # Build in THIS job, on THIS checkout, immediately before publish.
       # `verify` builds and e2e-smokes on a separate runner/workspace that is
@@ -329,10 +370,28 @@ jobs:
           echo "dist-tag=$DIST_TAG"
           echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
 
+      # Retained from `main`. OIDC trusted publishing needs NO config here and
+      # is preferred; this only engages when an NPM_TOKEN secret is actually
+      # set, and exists so that a tag pushed before the npmjs Trusted Publisher
+      # registration lands still has a working auth path instead of failing
+      # with no recourse. `--provenance` below still produces a signed
+      # attestation on this path (it uses id-token: write, held by this job).
+      - name: Configure npm auth (NPM_TOKEN fallback only — OIDC needs no config here)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
+            echo "npm auth: using NPM_TOKEN secret fallback"
+          else
+            echo "npm auth: no NPM_TOKEN secret set - relying on OIDC trusted publishing"
+          fi
+
       # Auth comes from the OIDC token (id-token: write) exchanged by npm
-      # against the Trusted Publisher registered for @wave-av/cli -- NO
-      # NODE_AUTH_TOKEN / NPM_TOKEN / .npmrc _authToken. --provenance is free
-      # under OIDC: it supplies the signing identity for the attestation.
+      # against the Trusted Publisher registered for @wave-av/cli, or from the
+      # NPM_TOKEN fallback above when it is set. --provenance is free under
+      # OIDC: it supplies the signing identity for the attestation.
       - name: npm publish (OIDC trusted publishing)
         env:
           DIST_TAG: ${{ steps.ver.outputs.dist_tag }}

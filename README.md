@@ -1,6 +1,6 @@
 # @wave-av/cli
 
-Command-line interface for the WAVE streaming platform. Manage streams, productions, and infrastructure from your terminal.
+WAVE is media infrastructure for the agentic internet: one call shape moves live and on-demand media across every transport, and both kinds of user, people and agents, discover it, call it, and pay for it per call. This CLI is the terminal client for that call shape. Manage streams, productions, and infrastructure from your terminal, by hand or from an agent's script.
 
 ## Installation
 
