@@ -63,7 +63,7 @@ export function registerConfigCommands(program: Command): void {
     );
 }
 
-function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+function getNestedValue(obj: object, path: string): unknown {
   const keys = path.split(".");
   let current: unknown = obj;
   for (const key of keys) {
@@ -75,9 +75,9 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return current;
 }
 
-function setNestedValue(obj: Record<string, unknown>, path: string, value: string): void {
+function setNestedValue(obj: object, path: string, value: string): void {
   const keys = path.split(".");
-  let current: Record<string, unknown> = obj;
+  let current: Record<string, unknown> = obj as Record<string, unknown>;
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
     if (typeof current[key] !== "object" || current[key] === null) {
