@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { oneOf } from "../../lib/options.js";
 
 export function registerSlidesCommands(program: Command): void {
   const slides = program.command("slides").description("Slide presentation tools");
@@ -10,14 +11,27 @@ export function registerSlidesCommands(program: Command): void {
   slides
     .command("convert")
     .description("Convert a presentation file for streaming")
-    .requiredOption("--input-file <path>", "Path to presentation file (pptx, pdf, keynote)")
-    .option("--output <path>", "Output directory")
+    .requiredOption("--title <title>", "Title for the converted deck")
+    .requiredOption("--input-url <url>", "URL of the presentation file")
+    .requiredOption(
+      "--input-format <format>",
+      "Input format (pptx, pdf, google_slides, keynote)",
+    )
+    .option("--resolution <resolution>", 'Output resolution (e.g. "1920x1080")')
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
+        // Conversion reads the deck from a URL; it does not upload a local file.
         const result = await client.slides.convert({
-          inputFile: opts.inputFile,
-          output: opts.output,
+          title: opts.title,
+          input_url: opts.inputUrl,
+          input_format: oneOf("--input-format", opts.inputFormat, [
+            "pptx",
+            "pdf",
+            "google_slides",
+            "keynote",
+          ]),
+          resolution: opts.resolution,
         });
         console.log(chalk.green("Presentation converted."));
         formatOutput(result, program.opts());
