@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import { Command } from "commander";
 import chalk from "chalk";
 import { registerAuthCommands } from "./commands/auth/index.js";
@@ -54,25 +53,7 @@ import { registerCompletionCommands } from "./commands/completion/index.js";
 import { registerApiCommands } from "./commands/api/index.js";
 import { registerLinkCommands } from "./commands/link/index.js";
 import { detectEnvironment } from "./lib/environment.js";
-
-/**
- * Read the CLI's own version straight from package.json, next to whatever entry point is
- * actually running (src/cli.ts in dev, dist/index.js once bundled — both sit one directory
- * below the package root). Previously this was hardcoded ("1.0.0") in two places and never
- * matched the published version (1.0.8+), which broke `wave --version` and any tooling that
- * shells out to it to detect the installed CLI version.
- */
-function readOwnVersion(): string {
-  try {
-    const require = createRequire(import.meta.url);
-    const pkg = require("../package.json") as { version?: string };
-    return pkg.version ?? "0.0.0-unknown";
-  } catch {
-    return "0.0.0-unknown";
-  }
-}
-
-const CLI_VERSION = readOwnVersion();
+import { CLI_VERSION } from "./lib/version.js";
 
 function printBanner(): void {
   // WAVE brand gradient: blue (#3366FF) -> purple (#7B41E8) -> cyan (#33BBCC)
