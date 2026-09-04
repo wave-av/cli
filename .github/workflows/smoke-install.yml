@@ -37,9 +37,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline
 
       - name: Build
         run: npm run build
@@ -49,7 +50,22 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # DERIVED 2026-09-04: measured against the last 21 runs of this workflow (job-run
+    # history via `gh run list`/`gh run view --json jobs`), 5 of 42 smoke matrix-leg
+    # runs hit the 10-minute cap exactly (job duration 10m02s-10m16s, reported by GH
+    # as conclusion=cancelled with "exceeded the maximum execution time of 10m0s" —
+    # NOT a concurrency cancel, which finishes in seconds). Several more finished at
+    # 7-9.5 minutes, i.e. one slow registry response from also timing out. Root cause:
+    # this job does two full `npm install`s from a cold cache (the root `npm ci` to
+    # build, then a lockfile-less `npm i` of the packed tarball into a throwaway repo
+    # to smoke-test the real registry resolution) - a local cold `npm ci --include=dev`
+    # for this repo measured 2m54s-6-7m depending on runner/registry latency, and the
+    # second install is not smaller. The primary fix is `cache: npm` (below) + npm's
+    # own --prefer-offline flag, which should make most runs fast; this timeout is
+    # sized for the residual cold-cache case (first run after this change, or any run
+    # where the lockfile hash changes and the cache is a genuine miss): observed worst
+    # case 10m16s + ~45% headroom for a slower runner or registry outage, rounded to 15.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -63,9 +79,10 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           registry-url: https://registry.npmjs.org
+          cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline
 
       - name: Build
         run: npm run build
@@ -78,8 +95,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/smoke"
           cd "$RUNNER_TEMP/smoke"
           npm init -y >/dev/null
-          tarball=$(ls "$RUNNER_TEMP"/wave-av-cli-*.tgz | head -n1)
-          npm i "$tarball"
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name 'wave-av-cli-*.tgz' -print -quit)
+          npm i "$tarball" --prefer-offline
 
       - name: wave --version / --help (module-resolution + VER-001 version-truth smoke)
         run: |
