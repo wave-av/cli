@@ -37,7 +37,7 @@ export function registerDesktopCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.desktop.status(id);
+        const result = await client.desktop.getStatus(id);
         formatOutput(result, program.opts());
       }),
     );

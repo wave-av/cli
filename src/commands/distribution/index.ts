@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { oneOf } from "../../lib/options.js";
 import { confirmDestructive } from "../../lib/output/index.js";
 
 export function registerDistributionCommands(program: Command): void {
@@ -12,15 +13,21 @@ export function registerDistributionCommands(program: Command): void {
 
   distribution
     .command("simulcast")
-    .description("Set up simulcast for a stream")
+    .description("Start simulcasting a stream to configured destinations")
     .requiredOption("--stream-id <streamId>", "Stream ID")
+    .requiredOption(
+      "--destinations <ids>",
+      "Comma-separated destination IDs to simulcast to",
+    )
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.distribution.simulcast({
-          streamId: opts.streamId,
-        });
-        console.log(chalk.green("Simulcast configured."));
+        const destinationIds = (opts.destinations as string)
+          .split(",")
+          .map((d: string) => d.trim())
+          .filter(Boolean);
+        const result = await client.distribution.startSimulcast(opts.streamId, destinationIds);
+        console.log(chalk.green("Simulcast started."));
         formatOutput(result, program.opts());
       }),
     );
@@ -35,7 +42,7 @@ export function registerDistributionCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.distribution.destinations.list();
+        const result = await client.distribution.listDestinations();
         formatOutput(result.data, program.opts());
       }),
     );
@@ -43,16 +50,35 @@ export function registerDistributionCommands(program: Command): void {
   destinations
     .command("add")
     .description("Add a distribution destination")
-    .requiredOption("--platform <platform>", "Platform (youtube, twitch, facebook, custom)")
-    .requiredOption("--stream-key <key>", "Stream key for the platform")
+    .requiredOption("--name <name>", "Human-readable destination name")
+    .requiredOption(
+      "--platform <platform>",
+      "Platform (youtube, twitch, facebook, linkedin, twitter, tiktok, instagram, custom_rtmp)",
+    )
+    .option(
+      "--stream-key-ref <ref>",
+      "Reference to the stored stream-key credential (not the key itself)",
+    )
     .option("--url <url>", "Custom RTMP URL")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.distribution.destinations.add({
-          platform: opts.platform,
-          streamKey: opts.streamKey,
-          url: opts.url,
+        // The API stores a REFERENCE to the platform stream key, never the key
+        // itself, so the CLI must not accept a raw secret on argv either.
+        const result = await client.distribution.addDestination({
+          name: opts.name,
+          type: oneOf("--platform", opts.platform, [
+            "youtube",
+            "twitch",
+            "facebook",
+            "linkedin",
+            "twitter",
+            "tiktok",
+            "instagram",
+            "custom_rtmp",
+          ]),
+          stream_key_ref: opts.streamKeyRef,
+          rtmp_url: opts.url,
         });
         console.log(chalk.green(`Destination added: ${result.id}`));
         formatOutput(result, program.opts());
@@ -67,7 +93,7 @@ export function registerDistributionCommands(program: Command): void {
         const confirmed = await confirmDestructive("remove", `destination ${id}`, program.opts());
         if (!confirmed) return;
         const client = await getClient(program.opts());
-        await client.distribution.destinations.remove(id);
+        await client.distribution.removeDestination(id);
         console.log(chalk.green(`Destination ${id} removed.`));
       }),
     );
