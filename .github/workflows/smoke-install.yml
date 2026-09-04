@@ -23,6 +23,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # VER-001 gate. Until now `npm test` ran ONLY in release.yml, which is `on: push: tags: v*` —
+  # so the version regression tests in src/cli.test.ts never gated a pull request, and a version
+  # drift could only be discovered after a tag was already cut. This job runs them on every PR.
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests (includes the VER-001 version-truth gate)
+        run: npm test
+
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -57,11 +81,43 @@ jobs:
           tarball=$(ls "$RUNNER_TEMP"/wave-av-cli-*.tgz | head -n1)
           npm i "$tarball"
 
-      - name: wave --version / --help (module-resolution smoke)
+      - name: wave --version / --help (module-resolution + VER-001 version-truth smoke)
         run: |
           cd "$RUNNER_TEMP/smoke"
-          npx --yes wave --version
-          npx --yes wave --help >/dev/null
+
+          # VER-001: this step used to run `wave --version` and DISCARD the output, so the
+          # installed tarball could print any version at all and still pass. Published 1.0.8
+          # printed "1.0.0" exactly like this and shipped. Compare against package.json — this
+          # is the end-to-end half of the gate (the unit job covers the source half), and it
+          # runs against the real packed tarball as a real user's install would see it.
+          EXPECTED=$(node -p "require('$GITHUB_WORKSPACE/package.json').version")
+          ACTUAL=$(npx --yes wave --version | tr -d '[:space:]')
+
+          echo "package.json=$EXPECTED  wave --version=$ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::VER-001: installed CLI reports '$ACTUAL' but package.json says '$EXPECTED'"
+            exit 1
+          fi
+
+          # The banner is a second, independent rendering of the version — it disagreed with
+          # --version in the shipped 1.0.8 bundle. Assert it carries the same version. The CLI
+          # deliberately suppresses the banner under CI/agent env vars, so clear every variable
+          # detectEnvironment() keys on (src/lib/environment.ts) — otherwise this check would
+          # silently assert against a banner that was never printed, and pass for the wrong
+          # reason. Comparing the extracted BANNER for EQUALITY (rather than grepping for a
+          # substring) is what makes a missing banner a failure instead of a quiet pass.
+          HELP=$(
+            unset CI GITHUB_ACTIONS VERCEL BUILDKITE GITLAB_CI CIRCLECI \
+                  WAVE_AGENT CLAUDE_CODE CURSOR_SESSION AIDER_SESSION CONTINUE_SESSION
+            npx --yes wave --help 2>&1
+          )
+          BANNER=$(printf '%s' "$HELP" | sed 's/\x1b\[[0-9;]*m//g' | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*' | head -n1)
+          if [ "$BANNER" != "v$EXPECTED" ]; then
+            echo "::error::VER-001: help banner reported '${BANNER:-<no version in banner>}', expected 'v$EXPECTED'"
+            printf '%s\n' "$HELP" | head -n 20
+            exit 1
+          fi
+          echo "VER-001: package.json == --version == banner == $EXPECTED"
 
       - name: wave status / wave doctor (live gateway reachability)
         working-directory: ${{ runner.temp }}/smoke

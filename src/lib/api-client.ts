@@ -2,6 +2,7 @@ import { Wave } from "@wave-av/sdk";
 import chalk from "chalk";
 import { loadConfig } from "./config/manager.js";
 import { getApiKey } from "./auth/keychain.js";
+import { CLI_VERSION } from "./version.js";
 
 export async function getClient(opts?: { org?: string; project?: string }): Promise<Wave> {
   // Environment variable override (for CI/CD)
@@ -46,7 +47,7 @@ export async function getClient(opts?: { org?: string; project?: string }): Prom
     baseUrl: project.baseUrl,
     customHeaders: {
       "X-Wave-Source": "cli",
-      "X-Wave-CLI-Version": "1.0.0",
+      "X-Wave-CLI-Version": CLI_VERSION,
     },
   });
 
