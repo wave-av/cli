@@ -40,7 +40,7 @@ export function registerUsbCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.usb.devices.list();
+        const result = await client.usb.list();
         formatOutput(result.data, program.opts());
       }),
     );
@@ -52,8 +52,10 @@ export function registerUsbCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string, opts) => {
         const client = await getClient(program.opts());
-        const settings = opts.settings ? JSON.parse(opts.settings as string) : undefined;
-        const result = await client.usb.configure(id, { settings });
+        // `--settings` IS the device config; wrapping it would nest the payload
+        // under a bogus "settings" key.
+        const settings = opts.settings ? JSON.parse(opts.settings as string) : {};
+        const result = await client.usb.configure(id, settings);
         console.log(chalk.green(`Device ${id} configured.`));
         formatOutput(result, program.opts());
       }),

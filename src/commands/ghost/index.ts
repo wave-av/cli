@@ -14,20 +14,20 @@ export function registerGhostCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.ghost.suggestions({
-          productionId: opts.productionId,
-        });
-        formatOutput(result, program.opts());
+        const result = await client.ghost.listSuggestions(opts.productionId);
+        formatOutput(result.data, program.opts());
       }),
     );
 
   ghost
     .command("apply <id>")
-    .description("Apply an autopilot suggestion")
+    .description("Accept an autopilot suggestion")
+    .requiredOption("--production-id <productionId>", "Production ID")
     .action(
-      wrapCommand(async (id: string) => {
+      wrapCommand(async (id: string, opts) => {
         const client = await getClient(program.opts());
-        const result = await client.ghost.apply(id);
+        // Suggestions are scoped to their production.
+        const result = await client.ghost.acceptSuggestion(opts.productionId, id);
         console.log(chalk.green(`Suggestion ${id} applied.`));
         formatOutput(result, program.opts());
       }),

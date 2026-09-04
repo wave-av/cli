@@ -3,27 +3,40 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { oneOf } from "../../lib/options.js";
 
 export function registerQrCommands(program: Command): void {
   const qr = program.command("qr").description("QR code generation and scanning");
 
   qr.command("create")
     .description("Generate a QR code")
-    .requiredOption("--data <data>", "Data to encode in the QR code")
-    .option("--format <format>", "Output format (png, svg)", "png")
+    .requiredOption("--content <content>", "Content to encode in the QR code")
+    .option("--type <type>", "QR type (url, stream, vcard, wifi, text, dynamic)", "url")
+    .option("--format <format>", "Rendered image format (png, svg, pdf)", "png")
     .option("--size <size>", "QR code size in pixels", "256")
-    .option("--output <path>", "Output file path")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.qr.create({
-          data: opts.data,
-          format: opts.format,
-          size: parseInt(opts.size),
-          output: opts.output,
+        const qr = await client.qr.create({
+          type: oneOf("--type", opts.type, [
+            "url",
+            "stream",
+            "vcard",
+            "wifi",
+            "text",
+            "dynamic",
+          ]),
+          content: opts.content,
         });
-        console.log(chalk.green("QR code generated."));
-        formatOutput(result, program.opts());
+        // Rendering is a separate call; the API returns a URL for the image
+        // rather than writing bytes.
+        const image = await client.qr.getImage(
+          qr.id,
+          oneOf("--format", opts.format, ["png", "svg", "pdf"]),
+          parseInt(opts.size),
+        );
+        console.log(chalk.green(`QR code generated: ${image.url}`));
+        formatOutput({ ...qr, image_url: image.url }, program.opts());
       }),
     );
 
