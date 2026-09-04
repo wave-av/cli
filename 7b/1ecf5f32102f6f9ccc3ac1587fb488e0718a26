@@ -1,0 +1,56 @@
+src/commands/mesh/index.ts
+  s_418f585ff58cb5::t_6c18a910ebd22e 17
+  s_418f585ff58cb5::t_0d8c8cc13effe6 28
+  s_418f585ff58cb5::t_f659d77b090321 35-36,42,47-50
+src/commands/desktop/index.ts
+  s_418f585ff58cb5::t_478f5a2e5ba1a2 40
+src/commands/creator/index.ts
+  s_418f585ff58cb5::t_b8631f829261ea 14,19-21
+  s_418f585ff58cb5::t_859904cbcb6952 46-48,52-57
+  s_418f585ff58cb5::t_6c3328ed859159 66,71-73
+  s_418f585ff58cb5::t_84e98c63c9b036 6
+  s_418f585ff58cb5::t_fd21097baa88d5 31,36
+src/commands/editor/index.ts
+  s_418f585ff58cb5::t_744e81b086e148 14,18
+  s_418f585ff58cb5::t_866325f93b6a6d 42
+  s_418f585ff58cb5::t_bd0ab610bb56d4 6
+  s_418f585ff58cb5::t_0a4f270eaff8fa 31
+  s_418f585ff58cb5::t_1339c89caa46de 50,54-56
+src/commands/drm/index.ts
+  s_418f585ff58cb5::t_32004addb4f1ad 6,9-20
+  s_418f585ff58cb5::t_d45cfab8a0bba6 35
+  s_418f585ff58cb5::t_d3e967593ff46c 84
+  s_418f585ff58cb5::t_4921f1f7014a76 119-120,124-128
+  s_418f585ff58cb5::t_6b024273d85ed5 142
+  s_418f585ff58cb5::t_b51b6d9d08f4e9 69
+  s_418f585ff58cb5::t_dfa53fdcc93276 95-100,104,106-108
+  s_418f585ff58cb5::t_70a2f1bb325a51 44-45,47,51-55
+  s_418f585ff58cb5::t_9708542107de51 21
+src/commands/edge/index.ts
+  s_418f585ff58cb5::t_b9c8873b2df932 72-74,78-80,82-84
+  s_418f585ff58cb5::t_66584496eaeb5f 49
+  s_418f585ff58cb5::t_85cb018305d03b 62-64
+  s_418f585ff58cb5::t_6203f7e4c36c62 34-35
+src/commands/distribution/index.ts
+  s_418f585ff58cb5::t_cb041ffa6902f7 16,18-21,25-30
+  s_418f585ff58cb5::t_0ef013998ca799 45
+  s_418f585ff58cb5::t_2556ac5c4e8237 96
+  s_418f585ff58cb5::t_c8957f795107fa 6
+  s_418f585ff58cb5::t_7366279995e7e9 53-61,66-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "7b1ecf5f32102f6f9ccc3ac1587fb488e0718a26",
+  "prompts": {},
+  "sessions": {
+    "s_418f585ff58cb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e5b410ce-aa9a-48d6-be5d-09400395b1b6",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
