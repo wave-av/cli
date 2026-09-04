@@ -14,7 +14,7 @@ export function registerMeshCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.mesh.status();
+        const result = await client.mesh.getTopology();
         formatOutput(result, program.opts());
       }),
     );
@@ -25,30 +25,29 @@ export function registerMeshCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.mesh.regions();
+        const result = await client.mesh.listRegions();
         formatOutput(result.data, program.opts());
       }),
     );
 
   mesh
     .command("failover")
-    .description("Trigger a failover between regions")
-    .requiredOption("--from <region>", "Source region")
+    .description("Trigger a failover to a target region under a failover policy")
+    .requiredOption("--policy-id <policyId>", "Failover policy ID")
     .requiredOption("--to <region>", "Target region")
     .action(
       wrapCommand(async (opts) => {
         const confirmed = await confirmDestructive(
           "failover",
-          `from ${opts.from} to ${opts.to}`,
+          `policy ${opts.policyId} to ${opts.to}`,
           program.opts(),
         );
         if (!confirmed) return;
         const client = await getClient(program.opts());
-        const result = await client.mesh.failover({
-          from: opts.from,
-          to: opts.to,
-        });
-        console.log(chalk.green(`Failover initiated: ${opts.from} -> ${opts.to}`));
+        // Failover is driven by a policy, which already names its source; only the
+        // target region is supplied at trigger time.
+        const result = await client.mesh.triggerFailover(opts.policyId, opts.to);
+        console.log(chalk.green(`Failover initiated to ${opts.to}.`));
         formatOutput(result, program.opts());
       }),
     );

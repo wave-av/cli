@@ -31,7 +31,8 @@ export function registerEdgeCommands(program: Command): void {
         const confirmed = await confirmDestructive("purge", target, program.opts());
         if (!confirmed) return;
         const client = await getClient(program.opts());
-        const result = await client.edge.cache.purge({ path: opts.path });
+        // purgeCache takes glob patterns; "no --path" means purge everything.
+        const result = await client.edge.purgeCache([opts.path ?? "/*"]);
         console.log(chalk.green("Cache purge initiated."));
         formatOutput(result, program.opts());
       }),
@@ -45,7 +46,7 @@ export function registerEdgeCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.edge.workers.list();
+        const result = await client.edge.listWorkers();
         formatOutput(result.data, program.opts());
       }),
     );
@@ -58,8 +59,9 @@ export function registerEdgeCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.edge.rules.list();
-        formatOutput(result.data, program.opts());
+        // getRoutingRules returns a plain array, not a paginated envelope.
+        const result = await client.edge.getRoutingRules();
+        formatOutput(result, program.opts());
       }),
     );
 
@@ -67,13 +69,19 @@ export function registerEdgeCommands(program: Command): void {
     .command("create")
     .description("Create an edge rule")
     .requiredOption("--pattern <pattern>", "URL pattern to match")
-    .requiredOption("--action <action>", "Rule action (cache, redirect, block)")
+    .requiredOption("--target <target>", "Origin or POP the matched traffic routes to")
+    .option("--priority <n>", "Rule priority (lower wins)", "100")
+    .option("--region-affinity <region>", "Prefer a region for matched traffic")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.edge.rules.create({
+        // Routing rules select a target, they do not carry a cache/redirect/block
+        // verb; the API models that as pattern -> target with a priority.
+        const result = await client.edge.setRoutingRule({
           pattern: opts.pattern,
-          action: opts.action,
+          target: opts.target,
+          priority: parseInt(opts.priority),
+          region_affinity: opts.regionAffinity,
         });
         console.log(chalk.green(`Edge rule created: ${result.id}`));
         formatOutput(result, program.opts());
