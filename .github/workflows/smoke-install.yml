@@ -37,9 +37,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline
 
       - name: Build
         run: npm run build
@@ -49,7 +50,30 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # DERIVED 2026-09-04, three measurement rounds, see PR description for run IDs:
+    # (1) BEFORE: the original `timeout-minutes: 10` with no cache and a
+    #     `registry-url` line was hit exactly 5 of 42 smoke matrix-leg runs
+    #     (job duration 10m02s-10m16s, GH-reported as conclusion=cancelled with
+    #     "exceeded the maximum execution time of 10m0s" - not a concurrency
+    #     cancel, which finishes in seconds) across the last 21 workflow runs.
+    # (2) Adding `cache: npm` + `--prefer-offline` alone did NOT fix it: 8
+    #     consecutive dispatched runs afterward were all green but still
+    #     ranged 5m16s-14m19s per leg - close enough to a 15-min raised
+    #     timeout to still be a real risk.
+    # (3) ROOT CAUSE, isolated by comparing against the `unit` job (identical
+    #     `npm ci`, identical lockfile, identical node 22): this job's
+    #     `registry-url: https://registry.npmjs.org` line (now removed) made
+    #     actions/setup-node write an authenticated npm config with a
+    #     placeholder NODE_AUTH_TOKEN, even though this job never publishes -
+    #     it only ever reads public packages, and npm's default registry is
+    #     already registry.npmjs.org with zero config. `unit` (no
+    #     registry-url) consistently took 11s-26s, cold, no cache. Removing
+    #     registry-url here and re-running 8 more consecutive dispatches:
+    #     every leg completed in 16s-30s - a ~20-30x improvement, all green.
+    # timeout-minutes is left at 15, not reverted to the original 10, purely
+    # as headroom for a genuinely degraded runner or registry outage; actual
+    # runs should land in the tens-of-seconds range per (3) above.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -62,10 +86,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          registry-url: https://registry.npmjs.org
+          cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline
 
       - name: Build
         run: npm run build
@@ -78,8 +102,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/smoke"
           cd "$RUNNER_TEMP/smoke"
           npm init -y >/dev/null
-          tarball=$(ls "$RUNNER_TEMP"/wave-av-cli-*.tgz | head -n1)
-          npm i "$tarball"
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name 'wave-av-cli-*.tgz' -print -quit)
+          npm i "$tarball" --prefer-offline
 
       - name: wave --version / --help (module-resolution + VER-001 version-truth smoke)
         run: |
