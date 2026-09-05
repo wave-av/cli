@@ -18,6 +18,9 @@ on:
       tag:
         required: true
         type: string
+      sha:
+        required: true
+        type: string
 
 jobs:
   release:
@@ -29,13 +32,12 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: ${{ inputs.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
-          cache: 'npm'
 
       # Build the EXACT tree this tag ships, so the tarball attached to the
       # Release is the real release artifact, not a stale/partial checkout.

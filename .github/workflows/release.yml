@@ -50,6 +50,12 @@ jobs:
   # Resolve which tag this run releases. Push reads it from the ref;
   # workflow_dispatch reads it from the `tag` input. Delegates to
   # scripts/release/resolve-tag.sh so the same logic is testable outside CI.
+  # Full history + all tags (fetch-depth: 0) -- needed so resolve-tag.sh's
+  # `git rev-parse`/`git merge-base` can see the tag and origin/main. No `ref:`
+  # override: this checks out whatever triggered the run (the pushed tag, or
+  # the branch a dispatch was run from) -- never the untrusted dispatch input
+  # -- and this job only reads metadata (no build/execution of the tag's
+  # tree), so it is not itself a "poisonable step".
   resolve:
     name: Resolve release tag
     runs-on: ubuntu-latest
@@ -58,15 +64,14 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       version: ${{ steps.tag.outputs.version }}
+      sha: ${{ steps.tag.outputs.sha }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          fetch-depth: 0
           persist-credentials: false
-          sparse-checkout: |
-            scripts/release
-          sparse-checkout-cone-mode: false
 
-      - name: Resolve tag from trigger
+      - name: Resolve and validate tag from trigger (format, existence, trust)
         id: tag
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -82,6 +87,7 @@ jobs:
     uses: ./.github/workflows/_release-verify.yml
     with:
       tag: ${{ needs.resolve.outputs.tag }}
+      sha: ${{ needs.resolve.outputs.sha }}
 
   publish:
     name: Publish (npm OIDC + live-registry verify)
@@ -92,6 +98,7 @@ jobs:
     uses: ./.github/workflows/_release-publish.yml
     with:
       tag: ${{ needs.resolve.outputs.tag }}
+      sha: ${{ needs.resolve.outputs.sha }}
       version: ${{ needs.resolve.outputs.version }}
 
   release:
@@ -102,3 +109,4 @@ jobs:
     uses: ./.github/workflows/_release-github-release.yml
     with:
       tag: ${{ needs.resolve.outputs.tag }}
+      sha: ${{ needs.resolve.outputs.sha }}
