@@ -7,9 +7,6 @@ import { oneOf } from "../../lib/options.js";
 import { confirmDestructive } from "../../lib/output/index.js";
 
 export function registerZoomCommands(program: Command): void {
-  // CLI-4267 mutation-proof: deliberate type error, seeded on purpose to prove the new
-  // Type-check CI gate actually goes red. This line is removed in the next commit.
-  const _deliberateTypeError: number = "this is a string, not a number";
   const zoom = program.command("zoom").description("Zoom meeting and recording integration");
 
   const meeting = zoom.command("meeting").description("Manage Zoom meetings");
