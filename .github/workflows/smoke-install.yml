@@ -113,8 +113,13 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
 
+      # --include=dev explicitly, same reasoning as the `unit` job above: `npm run build`
+      # below needs tsup (a devDependency), and a runner with a production-leaning npm
+      # config (NODE_ENV=production or global omit=dev) would otherwise silently skip it,
+      # failing this Build step for a reason unrelated to the tarball/registry install this
+      # job actually exists to test.
       - name: Install dependencies
-        run: npm ci --prefer-offline
+        run: npm ci --prefer-offline --include=dev
 
       - name: Build
         run: npm run build
