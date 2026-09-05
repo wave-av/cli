@@ -65,16 +65,20 @@ export function registerAnalyticsCommands(program: Command): void {
   analytics
     .command("export")
     .description("Export analytics data")
-    .option("--format <format>", "Export format (csv, json)", "csv")
+    .option("--format <format>", "Export format (csv, json, pdf)", "csv")
     .option("--period <period>", "Time period (day, week, month)", "month")
     .option("--stream-id <streamId>", "Filter by stream ID")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.pulse.export({
-          format: opts.format,
-          period: opts.period,
-          streamId: opts.streamId,
+        // The SDK has no direct "export" call; an export is a generated report
+        // with a download_url, so route through createReport.
+        const format = opts.format === "json" || opts.format === "pdf" ? opts.format : "csv";
+        const result = await client.pulse.createReport({
+          name: `analytics-export-${Date.now()}`,
+          type: opts.streamId ? "stream-export" : "export",
+          time_range: toTimeRange(opts.period),
+          format,
         });
         formatOutput(result, program.opts());
       }),

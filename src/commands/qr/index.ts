@@ -44,10 +44,10 @@ export function registerQrCommands(program: Command): void {
     .description("Scan a QR code from an image")
     .requiredOption("--image-path <path>", "Path to image file containing QR code")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.qr.scan({ imagePath: opts.imagePath });
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        // QrAPI is generation/analytics-only (create/get/update/remove/list/
+        // getAnalytics/createBatch/getImage) — there is no decode/scan route.
+        throw new Error("Scanning a QR code is not supported by the current SDK.");
       }),
     );
 

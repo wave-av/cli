@@ -68,11 +68,10 @@ export function registerVaultCommands(program: Command): void {
     .command("archive <id>")
     .description("Archive a recording to cold storage")
     .action(
-      wrapCommand(async (id: string) => {
-        const client = await getClient(program.opts());
-        const result = await client.vault.archive(id);
-        console.log(chalk.green(`Recording ${id} archived.`));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        // VaultAPI's update() covers title/tags/metadata only — there is no
+        // storage-tier mutation route to move a recording to cold storage.
+        throw new Error("Archiving a recording to cold storage is not supported by the current SDK.");
       }),
     );
 
@@ -80,11 +79,8 @@ export function registerVaultCommands(program: Command): void {
     .command("restore <id>")
     .description("Restore an archived recording")
     .action(
-      wrapCommand(async (id: string) => {
-        const client = await getClient(program.opts());
-        const result = await client.vault.restore(id);
-        console.log(chalk.green(`Recording ${id} restoration started.`));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        throw new Error("Restoring an archived recording is not supported by the current SDK.");
       }),
     );
 }

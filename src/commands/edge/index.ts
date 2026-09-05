@@ -15,9 +15,10 @@ export function registerEdgeCommands(program: Command): void {
     .description("Show edge cache status")
     .action(
       wrapCommand(async () => {
-        const client = await getClient(program.opts());
-        const result = await client.edge.cache.status();
-        formatOutput(result, program.opts());
+        // EdgeAPI has purgeCache but no cache-status read route.
+        throw new Error(
+          "Edge cache status is not supported by the current SDK. Use `wave edge cache purge` to invalidate cache entries.",
+        );
       }),
     );
 

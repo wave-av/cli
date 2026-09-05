@@ -35,12 +35,13 @@ export function registerAudienceCommands(program: Command): void {
     .description("List polls")
     .option("--stream-id <streamId>", "Filter by stream ID")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.audience.polls.list({
-          streamId: opts.streamId,
-        });
-        formatOutput(result.data, program.opts());
+      wrapCommand(async () => {
+        // The SDK's AudienceAPI has no poll-listing route (only createPoll,
+        // getPoll, closePoll, getPollResults, vote) — there is no server-side
+        // "list" to call. Fail loudly rather than fake a result.
+        throw new Error(
+          "Listing polls is not supported by the current SDK. Use `wave audience polls results <id>` for a specific poll.",
+        );
       }),
     );
 
@@ -108,13 +109,13 @@ export function registerAudienceCommands(program: Command): void {
     .description("Enable reactions for a stream")
     .requiredOption("--stream-id <streamId>", "Stream ID")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.audience.reactions.enable({
-          streamId: opts.streamId,
-        });
-        console.log(chalk.green("Reactions enabled."));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        // The SDK's AudienceAPI has no enable/disable toggle for reactions —
+        // only sendReaction (fire one burst) and getReactionMetrics exist.
+        // There is nothing to call here; fail loudly rather than pretend.
+        throw new Error(
+          "Enabling/disabling reactions is not supported by the current SDK. Reactions are fired per-event via sendReaction.",
+        );
       }),
     );
 
@@ -123,13 +124,10 @@ export function registerAudienceCommands(program: Command): void {
     .description("Disable reactions for a stream")
     .requiredOption("--stream-id <streamId>", "Stream ID")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.audience.reactions.disable({
-          streamId: opts.streamId,
-        });
-        console.log(chalk.green("Reactions disabled."));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        throw new Error(
+          "Enabling/disabling reactions is not supported by the current SDK. Reactions are fired per-event via sendReaction.",
+        );
       }),
     );
 }

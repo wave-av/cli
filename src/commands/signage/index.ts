@@ -3,7 +3,6 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
-import { confirmDestructive } from "../../lib/output/index.js";
 
 export function registerSignageCommands(program: Command): void {
   const signage = program.command("signage").description("Digital signage management");
@@ -43,20 +42,19 @@ export function registerSignageCommands(program: Command): void {
 
   const content = signage.command("content").description("Manage signage content");
 
+  // The SDK has no standalone content asset store (no content.upload/list/delete)
+  // — content only exists as PlaylistItem entries embedded in a playlist, created
+  // via `signage playlist create` / `signage playlist update`.
   content
     .command("upload")
     .description("Upload content for signage")
     .requiredOption("--file <path>", "Path to content file")
     .option("--name <name>", "Content name")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.signage.content.upload({
-          file: opts.file,
-          name: opts.name,
-        });
-        console.log(chalk.green(`Content uploaded: ${result.id}`));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        throw new Error(
+          "Uploading standalone content is not supported by the current SDK. Add items directly via `wave signage playlist create`.",
+        );
       }),
     );
 
@@ -65,12 +63,10 @@ export function registerSignageCommands(program: Command): void {
     .description("List signage content")
     .option("--limit <n>", "Maximum results", "20")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.signage.content.list({
-          limit: parseInt(opts.limit),
-        });
-        formatOutput(result.data, program.opts());
+      wrapCommand(async () => {
+        throw new Error(
+          "Listing standalone content is not supported by the current SDK. Content lives inside playlists; use `wave signage playlist list`.",
+        );
       }),
     );
 
@@ -78,12 +74,10 @@ export function registerSignageCommands(program: Command): void {
     .command("delete <id>")
     .description("Delete signage content")
     .action(
-      wrapCommand(async (id: string) => {
-        const confirmed = await confirmDestructive("delete", `content ${id}`, program.opts());
-        if (!confirmed) return;
-        const client = await getClient(program.opts());
-        await client.signage.content.delete(id);
-        console.log(chalk.green(`Content ${id} deleted.`));
+      wrapCommand(async () => {
+        throw new Error(
+          "Deleting standalone content is not supported by the current SDK. Update the owning playlist via `wave signage playlist update` instead.",
+        );
       }),
     );
 

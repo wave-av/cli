@@ -152,19 +152,14 @@ export function registerDrmCommands(program: Command): void {
     .description("Rotate encryption keys")
     .option("--content-id <contentId>", "Rotate keys for specific content")
     .action(
-      wrapCommand(async (opts) => {
-        const confirmed = await confirmDestructive(
-          "rotate encryption keys for",
-          opts.contentId ?? "all content",
-          program.opts(),
+      wrapCommand(async () => {
+        // DrmAPI has no content-encryption-key rotation route. The closest
+        // real primitive is per-license issue/revoke, which is a different
+        // operation (per playback license, not per-content key). Fail
+        // loudly rather than fake a rotation.
+        throw new Error(
+          "Rotating encryption keys is not supported by the current SDK. Use `wave drm licenses revoke <id>` to revoke a specific license.",
         );
-        if (!confirmed) return;
-        const client = await getClient(program.opts());
-        const result = await client.drm.keys.rotate({
-          contentId: opts.contentId,
-        });
-        console.log(chalk.green("Key rotation initiated."));
-        formatOutput(result, program.opts());
       }),
     );
 }

@@ -44,14 +44,11 @@ export function registerSlidesCommands(program: Command): void {
     .requiredOption("--production-id <productionId>", "Production ID")
     .option("--slide-deck <id>", "Slide deck ID")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.slides.present({
-          productionId: opts.productionId,
-          slideDeckId: opts.slideDeck,
-        });
-        console.log(chalk.green("Presentation started."));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        // SlidesAPI is a document-conversion service (convert/get/list/remove/
+        // getProgress/addNarration/waitForReady) — there is no live-production
+        // "present" control route.
+        throw new Error("Starting a live slide presentation is not supported by the current SDK.");
       }),
     );
 
@@ -61,14 +58,8 @@ export function registerSlidesCommands(program: Command): void {
     .requiredOption("--production-id <productionId>", "Production ID")
     .option("--tool <tool>", "Annotation tool (pen, highlight, pointer)", "pen")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.slides.annotate({
-          productionId: opts.productionId,
-          tool: opts.tool,
-        });
-        console.log(chalk.green("Annotations enabled."));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        throw new Error("Slide annotation tools are not supported by the current SDK.");
       }),
     );
 }

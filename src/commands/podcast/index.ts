@@ -89,12 +89,13 @@ export function registerPodcastCommands(program: Command): void {
 
   rss
     .command("generate")
-    .description("Generate an RSS feed")
+    .description("Get a podcast's RSS feed")
+    .requiredOption("--podcast-id <podcastId>", "Podcast ID")
     .action(
-      wrapCommand(async () => {
+      wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.podcast.rss.generate();
-        console.log(chalk.green("RSS feed generated."));
+        const result = await client.podcast.getRSSFeed(opts.podcastId);
+        console.log(chalk.green(`RSS feed: ${result.url}`));
         formatOutput(result, program.opts());
       }),
     );

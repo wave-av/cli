@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { oneOf } from "../../lib/options.js";
 
 export function registerPrismCommands(program: Command): void {
   const prism = program.command("prism").description("Camera discovery and PTZ control");
@@ -10,55 +11,65 @@ export function registerPrismCommands(program: Command): void {
   prism
     .command("discover")
     .description("Discover available cameras on the network")
+    .option("--protocol <protocol>", "Comma-separated protocols to scan for")
+    .option("--subnet <subnet>", "Subnet to scan (CIDR)")
     .option("--timeout <ms>", "Discovery timeout in milliseconds", "5000")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.prism.discover({
-          timeout: parseInt(opts.timeout),
+        const result = await client.prism.discoverSources({
+          protocols: opts.protocol ? (opts.protocol as string).split(",").map((p: string) => p.trim()) : undefined,
+          subnet: opts.subnet,
+          timeout: parseInt(opts.timeout, 10),
         });
-        formatOutput(result.data, program.opts());
+        formatOutput(result, program.opts());
       }),
     );
 
   prism
     .command("create")
-    .description("Register a camera source")
-    .requiredOption("--source-type <type>", "Source type (ndi, srt, rtmp, usb)")
+    .description("Register a virtual camera or microphone device")
+    .requiredOption("--type <type>", "Device type (camera, microphone)")
+    .requiredOption("--source-protocol <protocol>", "Source protocol (ndi, onvif, srt, rtmp, webrtc, dante, cloudflare, livekit)")
+    .requiredOption("--source-endpoint <endpoint>", "Source endpoint address/URL")
+    .requiredOption("--node-id <nodeId>", "Node the device is attached to")
     .option("--name <name>", "Camera display name")
-    .option("--url <url>", "Camera source URL")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.prism.create({
-          sourceType: opts.sourceType,
-          name: opts.name,
-          url: opts.url,
+        const result = await client.prism.createDevice({
+          name: opts.name ?? opts.sourceEndpoint,
+          type: oneOf("--type", opts.type, ["camera", "microphone"] as const),
+          source_protocol: oneOf("--source-protocol", opts.sourceProtocol, [
+            "ndi",
+            "onvif",
+            "srt",
+            "rtmp",
+            "webrtc",
+            "dante",
+            "cloudflare",
+            "livekit",
+          ] as const),
+          source_endpoint: opts.sourceEndpoint,
+          node_id: opts.nodeId,
         });
-        console.log(chalk.green(`Camera registered: ${result.id}`));
+        console.log(chalk.green(`Device registered: ${result.id}`));
         formatOutput(result, program.opts());
       }),
     );
 
   prism
     .command("ptz")
-    .description("Control camera PTZ (Pan-Tilt-Zoom)")
-    .requiredOption("--camera-id <cameraId>", "Camera ID")
-    .option("--pan <degrees>", "Pan angle in degrees")
-    .option("--tilt <degrees>", "Tilt angle in degrees")
-    .option("--zoom <level>", "Zoom level (0-100)")
+    .description("Recall a PTZ preset on a camera")
+    .requiredOption("--device-id <deviceId>", "Device ID")
+    .requiredOption("--slot <slotNumber>", "Preset slot number to recall")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const params: Record<string, unknown> = {
-          cameraId: opts.cameraId,
-        };
-        if (opts.pan !== undefined) params.pan = parseFloat(opts.pan);
-        if (opts.tilt !== undefined) params.tilt = parseFloat(opts.tilt);
-        if (opts.zoom !== undefined) params.zoom = parseFloat(opts.zoom);
-        const result = await client.prism.ptz(params);
-        console.log(chalk.green("PTZ command sent."));
-        formatOutput(result, program.opts());
+        // The SDK has no free-form pan/tilt/zoom endpoint — PTZ moves are
+        // triggered by recalling a pre-configured preset slot.
+        await client.prism.recallPreset(opts.deviceId, parseInt(opts.slot, 10));
+        console.log(chalk.green(`PTZ preset ${opts.slot} recalled on ${opts.deviceId}.`));
       }),
     );
 }

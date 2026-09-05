@@ -36,14 +36,16 @@ export function registerGhostCommands(program: Command): void {
   ghost
     .command("history")
     .description("View autopilot action history")
-    .option("--production-id <productionId>", "Filter by production ID")
+    .requiredOption("--production-id <productionId>", "Production ID")
     .option("--limit <n>", "Maximum results", "20")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.ghost.history({
-          productionId: opts.productionId,
-          limit: parseInt(opts.limit),
+        // GhostAPI has no separate action-history route; listSuggestions
+        // already returns each suggestion's outcome (pending/accepted/
+        // rejected/expired), which is the autopilot's action log.
+        const result = await client.ghost.listSuggestions(opts.productionId, {
+          limit: parseInt(opts.limit, 10),
         });
         formatOutput(result.data, program.opts());
       }),
