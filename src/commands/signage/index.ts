@@ -3,7 +3,6 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
-import { confirmDestructive } from "../../lib/output/index.js";
 
 export function registerSignageCommands(program: Command): void {
   const signage = program.command("signage").description("Digital signage management");
@@ -17,7 +16,7 @@ export function registerSignageCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.signage.displays.list({
+        const result = await client.signage.listDisplays({
           limit: parseInt(opts.limit),
         });
         formatOutput(result.data, program.opts());
@@ -32,7 +31,7 @@ export function registerSignageCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.signage.displays.register({
+        const result = await client.signage.registerDisplay({
           name: opts.name,
           location: opts.location,
         });
@@ -43,20 +42,19 @@ export function registerSignageCommands(program: Command): void {
 
   const content = signage.command("content").description("Manage signage content");
 
+  // The SDK has no standalone content asset store (no content.upload/list/delete)
+  // — content only exists as PlaylistItem entries embedded in a playlist, created
+  // via `signage playlist create` / `signage playlist update`.
   content
     .command("upload")
     .description("Upload content for signage")
     .requiredOption("--file <path>", "Path to content file")
     .option("--name <name>", "Content name")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.signage.content.upload({
-          file: opts.file,
-          name: opts.name,
-        });
-        console.log(chalk.green(`Content uploaded: ${result.id}`));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        throw new Error(
+          "Uploading standalone content is not supported by the current SDK. Add items directly via `wave signage playlist create`.",
+        );
       }),
     );
 
@@ -65,12 +63,10 @@ export function registerSignageCommands(program: Command): void {
     .description("List signage content")
     .option("--limit <n>", "Maximum results", "20")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.signage.content.list({
-          limit: parseInt(opts.limit),
-        });
-        formatOutput(result.data, program.opts());
+      wrapCommand(async () => {
+        throw new Error(
+          "Listing standalone content is not supported by the current SDK. Content lives inside playlists; use `wave signage playlist list`.",
+        );
       }),
     );
 
@@ -78,12 +74,10 @@ export function registerSignageCommands(program: Command): void {
     .command("delete <id>")
     .description("Delete signage content")
     .action(
-      wrapCommand(async (id: string) => {
-        const confirmed = await confirmDestructive("delete", `content ${id}`, program.opts());
-        if (!confirmed) return;
-        const client = await getClient(program.opts());
-        await client.signage.content.delete(id);
-        console.log(chalk.green(`Content ${id} deleted.`));
+      wrapCommand(async () => {
+        throw new Error(
+          "Deleting standalone content is not supported by the current SDK. Update the owning playlist via `wave signage playlist update` instead.",
+        );
       }),
     );
 
@@ -91,19 +85,30 @@ export function registerSignageCommands(program: Command): void {
 
   schedule
     .command("create")
-    .description("Create a content schedule")
-    .requiredOption("--display-id <displayId>", "Target display ID")
-    .requiredOption("--content-id <contentId>", "Content ID to schedule")
-    .option("--start <datetime>", "Start datetime (ISO 8601)")
-    .option("--end <datetime>", "End datetime (ISO 8601)")
+    .description("Schedule a playlist onto displays")
+    .requiredOption("--display-ids <ids>", "Comma-separated target display IDs")
+    .requiredOption("--playlist-id <playlistId>", "Playlist ID to schedule")
+    .requiredOption("--start <datetime>", "Start datetime (ISO 8601)")
+    .requiredOption("--end <datetime>", "End datetime (ISO 8601)")
+    .option("--days <days>", "Comma-separated days of week (0=Sunday)", "0,1,2,3,4,5,6")
+    .option("--recurring", "Repeat on the given days", false)
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.signage.schedules.create({
-          displayId: opts.displayId,
-          contentId: opts.contentId,
-          start: opts.start,
-          end: opts.end,
+        // Schedules attach a PLAYLIST to one or more displays; there is no
+        // per-content scheduling route.
+        const result = await client.signage.scheduleContent({
+          playlist_id: opts.playlistId,
+          display_ids: (opts.displayIds as string)
+            .split(",")
+            .map((d: string) => d.trim())
+            .filter(Boolean),
+          start_time: opts.start,
+          end_time: opts.end,
+          days_of_week: (opts.days as string)
+            .split(",")
+            .map((d: string) => parseInt(d.trim(), 10)),
+          recurring: Boolean(opts.recurring),
         });
         console.log(chalk.green(`Schedule created: ${result.id}`));
         formatOutput(result, program.opts());
@@ -117,10 +122,9 @@ export function registerSignageCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.signage.schedules.list({
-          displayId: opts.displayId,
-        });
-        formatOutput(result.data, program.opts());
+        // listSchedules returns a plain array, not a paginated envelope.
+        const result = await client.signage.listSchedules(opts.displayId);
+        formatOutput(result, program.opts());
       }),
     );
 }

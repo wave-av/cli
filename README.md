@@ -183,4 +183,5 @@ jobs:
 
 ## License
 
-MIT
+Apache-2.0 — see [LICENSE](LICENSE). The [NOTICE](NOTICE) file reserves the WAVE
+trademarks; the Apache License grants rights to the software only.

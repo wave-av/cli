@@ -14,20 +14,20 @@ export function registerGhostCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.ghost.suggestions({
-          productionId: opts.productionId,
-        });
-        formatOutput(result, program.opts());
+        const result = await client.ghost.listSuggestions(opts.productionId);
+        formatOutput(result.data, program.opts());
       }),
     );
 
   ghost
     .command("apply <id>")
-    .description("Apply an autopilot suggestion")
+    .description("Accept an autopilot suggestion")
+    .requiredOption("--production-id <productionId>", "Production ID")
     .action(
-      wrapCommand(async (id: string) => {
+      wrapCommand(async (id: string, opts) => {
         const client = await getClient(program.opts());
-        const result = await client.ghost.apply(id);
+        // Suggestions are scoped to their production.
+        const result = await client.ghost.acceptSuggestion(opts.productionId, id);
         console.log(chalk.green(`Suggestion ${id} applied.`));
         formatOutput(result, program.opts());
       }),
@@ -36,14 +36,16 @@ export function registerGhostCommands(program: Command): void {
   ghost
     .command("history")
     .description("View autopilot action history")
-    .option("--production-id <productionId>", "Filter by production ID")
+    .requiredOption("--production-id <productionId>", "Production ID")
     .option("--limit <n>", "Maximum results", "20")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.ghost.history({
-          productionId: opts.productionId,
-          limit: parseInt(opts.limit),
+        // GhostAPI has no separate action-history route; listSuggestions
+        // already returns each suggestion's outcome (pending/accepted/
+        // rejected/expired), which is the autopilot's action log.
+        const result = await client.ghost.listSuggestions(opts.productionId, {
+          limit: parseInt(opts.limit, 10),
         });
         formatOutput(result.data, program.opts());
       }),
