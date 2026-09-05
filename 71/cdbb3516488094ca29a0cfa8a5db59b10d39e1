@@ -1,0 +1,50 @@
+src/commands/edge/index.ts
+  s_418f585ff58cb5::t_1b1179a20004f8 18-21
+src/commands/notify/index.ts
+  s_418f585ff58cb5::t_ce86c65d7b8f5e 6
+  s_418f585ff58cb5::t_4f49262602176f 8-13,18-21,25,27,29-39,44-54,56-58,60,62-63,67-69,73-74,79-81,83,85-96,101,103-105,109-121,128-130
+  s_418f585ff58cb5::t_5d43e2cc15b1ef 26
+  s_418f585ff58cb5::t_87f79eadcdc2d1 122-127
+src/commands/podcast/index.ts
+  s_418f585ff58cb5::t_954b2c6238a374 92-93,95,97-98
+src/commands/ghost/index.ts
+  s_418f585ff58cb5::t_befd20a25af6a3 39,44-48
+src/commands/signage/index.ts
+  s_418f585ff58cb5::t_940f9e1e9d3418 45-47,54-57,66-69,77-80
+src/commands/drm/index.ts
+  s_418f585ff58cb5::t_708f5d44e3c3d2 155-161
+src/commands/slides/index.ts
+  s_418f585ff58cb5::t_357ca67b471de9 47-51,61-62
+src/commands/vault/index.ts
+  s_418f585ff58cb5::t_5e47442ba0c49c 71-74,82-83
+src/commands/qr/index.ts
+  s_418f585ff58cb5::t_899dd32c24c717 47-50
+src/commands/prism/index.ts
+  s_418f585ff58cb5::t_f3aff6949783c3 6
+  s_418f585ff58cb5::t_2ce7732b3fe3db 14-15,20-23,25,31-35,40-54,56,63-65,69-72
+src/commands/analytics/index.ts
+  s_418f585ff58cb5::t_3f16d76e088e02 68,74-81
+src/commands/audience/index.ts
+  s_418f585ff58cb5::t_94ca88eabad75e 112-118,127-130
+  s_418f585ff58cb5::t_7d06eb50e4c2ca 38-44
+src/commands/desktop/index.ts
+  s_418f585ff58cb5::t_a9d69ddc91546e 14-18,27-29
+src/commands/usb/index.ts
+  s_418f585ff58cb5::t_95ba39c994ee8a 15-17,21-26,35,37,39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "71cdbb3516488094ca29a0cfa8a5db59b10d39e1",
+  "prompts": {},
+  "sessions": {
+    "s_418f585ff58cb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e5b410ce-aa9a-48d6-be5d-09400395b1b6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
