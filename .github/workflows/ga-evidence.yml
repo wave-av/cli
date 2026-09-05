@@ -1,0 +1,91 @@
+name: GA evidence (VER-001, SUPPLY-001)
+
+# GA-evidence PRODUCER for @wave-av/cli, mirroring wave-av/sdks' registry clean-room posture:
+# this job reports its TRUE result on every trigger, with no `|| true` and no
+# `continue-on-error` anywhere in the enforcement path. A gate that cannot fail is not a gate.
+#
+# Emits governance/schema/ga-evidence.schema.json-shaped evidence for two criteria from the
+# WAVE GA gate spec (WAVE-GA-gate-spec-v1.0.0.json):
+#   VER-001    every shipped component resolves to one source revision and version
+#   SUPPLY-001 release artifacts have verifiable provenance (the only machine-checkable clause
+#              this producer verifies — see scripts/ga/check-SUPPLY-001.sh's header)
+#
+# The artifact this job uploads (ga-evidence-cli) is how the evidence reaches
+# wave-av/claude-workstation TODAY. Opening the cross-repo PR that replaces
+# governance/ga-gate/evidence/incoming/wave-av__cli.ga-evidence.json in that repo is a
+# separate, credential-gated step this workflow does not perform.
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # 09:37 UTC daily — an arbitrary off-the-hour offset so this run does not stack with every
+    # other repo's on-the-hour scheduled workflow.
+    - cron: "37 9 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ga-evidence:
+    name: GA evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Run GA-evidence producer (VER-001, SUPPLY-001)
+        id: evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          set +e
+          node scripts/ga/ga-evidence.mjs --out-dir "$GITHUB_WORKSPACE/ga-out" 2>&1 | tee "$RUNNER_TEMP/ga-evidence.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          {
+            echo "## GA evidence — VER-001 / SUPPLY-001"
+            echo
+            echo "Exit code \`$code\` (0 = pass/unknown only, 1 = a criterion failed, 2 = the producer could not run)."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/ga-evidence.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Upload GA evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ga-evidence-cli
+          path: ga-out/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Enforce
+        # Fails the job on a real criterion failure (exit 1) or on a producer that could not
+        # run at all (exit 2). Exit 0 — including the case where a criterion is legitimately
+        # `unknown` (e.g. HEAD ahead of npm `latest` on a release PR, or the SBOM/vuln clauses
+        # this producer does not machine-verify) — is the only non-failing outcome, and it is
+        # computed by ga-evidence.mjs from the real check output, never assumed here.
+        env:
+          CODE: ${{ steps.evidence.outputs.exit_code }}
+        run: |
+          if [ "$CODE" != "0" ]; then
+            echo "::error title=ga-evidence::VER-001/SUPPLY-001 evidence run reported exit $CODE — see the job summary"
+            exit 1
+          fi
+          echo "ga-evidence: no criterion failed"
