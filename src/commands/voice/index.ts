@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { writeFile } from "node:fs/promises";
 import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
@@ -18,10 +19,27 @@ export function registerVoiceCommands(program: Command): void {
         const client = await getClient(program.opts());
         const result = await client.voice.synthesize({
           text: opts.text,
-          voiceId: opts.voiceId,
-          output: opts.output,
+          voice_id: opts.voiceId,
         });
-        console.log(chalk.green("Speech synthesized successfully."));
+        // The API returns an audio URL rather than bytes, so --output is a
+        // client-side fetch of that URL.
+        if (opts.output) {
+          if (!result.audio_url) {
+            throw new Error(
+              `Synthesis ${result.id} has no audio URL yet (status: ${result.status}).`,
+            );
+          }
+          const response = await fetch(result.audio_url);
+          if (!response.ok) {
+            throw new Error(
+              `Audio download failed: ${response.status} ${response.statusText}`,
+            );
+          }
+          await writeFile(opts.output, Buffer.from(await response.arrayBuffer()));
+          console.log(chalk.green(`Speech synthesized to ${opts.output}.`));
+        } else {
+          console.log(chalk.green("Speech synthesized successfully."));
+        }
         formatOutput(result, program.opts());
       }),
     );
@@ -30,13 +48,20 @@ export function registerVoiceCommands(program: Command): void {
     .command("clone")
     .description("Clone a voice from a sample")
     .requiredOption("--name <name>", "Name for the cloned voice")
-    .option("--sample <path>", "Path to voice sample audio file")
+    .requiredOption(
+      "--sample-urls <urls>",
+      "Comma-separated URLs of voice sample audio (min ~1 minute of clean audio)",
+    )
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.voice.clone({
+        // Cloning trains from sample URLs; it does not upload a local file.
+        const result = await client.voice.cloneVoice({
           name: opts.name,
-          samplePath: opts.sample,
+          sample_urls: (opts.sampleUrls as string)
+            .split(",")
+            .map((u: string) => u.trim())
+            .filter(Boolean),
         });
         console.log(chalk.green(`Voice cloned: ${result.id}`));
         formatOutput(result, program.opts());
@@ -49,7 +74,7 @@ export function registerVoiceCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.voice.list();
+        const result = await client.voice.listVoices();
         formatOutput(result.data, program.opts());
       }),
     );

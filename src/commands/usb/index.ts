@@ -12,11 +12,18 @@ export function registerUsbCommands(program: Command): void {
   relay
     .command("start")
     .description("Start USB relay for virtual camera/microphone")
-    .option("--device <id>", "Specific device ID")
+    .requiredOption("--device <id>", "Specific device ID")
+    .option("--reason <reason>", "Reason for the claim")
+    .option("--exclusive", "Claim the device exclusively", false)
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.usb.relay.start({ deviceId: opts.device });
+        // The SDK relays a USB device by claiming it, not via a
+        // stream-style relay.start() route.
+        const result = await client.usb.claim(opts.device, {
+          reason: opts.reason,
+          exclusive: opts.exclusive,
+        });
         console.log(chalk.green("USB relay started."));
         formatOutput(result, program.opts());
       }),
@@ -25,10 +32,11 @@ export function registerUsbCommands(program: Command): void {
   relay
     .command("stop")
     .description("Stop USB relay")
+    .requiredOption("--device <id>", "Specific device ID")
     .action(
-      wrapCommand(async () => {
+      wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.usb.relay.stop();
+        const result = await client.usb.release(opts.device);
         console.log(chalk.green("USB relay stopped."));
         formatOutput(result, program.opts());
       }),
@@ -40,7 +48,7 @@ export function registerUsbCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.usb.devices.list();
+        const result = await client.usb.list();
         formatOutput(result.data, program.opts());
       }),
     );
@@ -52,8 +60,10 @@ export function registerUsbCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string, opts) => {
         const client = await getClient(program.opts());
-        const settings = opts.settings ? JSON.parse(opts.settings as string) : undefined;
-        const result = await client.usb.configure(id, { settings });
+        // `--settings` IS the device config; wrapping it would nest the payload
+        // under a bogus "settings" key.
+        const settings = opts.settings ? JSON.parse(opts.settings as string) : {};
+        const result = await client.usb.configure(id, settings);
         console.log(chalk.green(`Device ${id} configured.`));
         formatOutput(result, program.opts());
       }),

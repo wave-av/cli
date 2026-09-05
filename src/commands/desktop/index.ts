@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
@@ -12,9 +11,11 @@ export function registerDesktopCommands(program: Command): void {
     .description("List connected desktop nodes")
     .action(
       wrapCommand(async () => {
-        const client = await getClient(program.opts());
-        const result = await client.desktop.nodes();
-        formatOutput(result.data, program.opts());
+        // DesktopAPI is entirely node-id-scoped (getInfo/getStatus/listDevices/...)
+        // — there is no enumerate-all-nodes route in the current SDK.
+        throw new Error(
+          "Listing desktop nodes is not supported by the current SDK. Use `wave desktop status <id>` for a known node.",
+        );
       }),
     );
 
@@ -23,11 +24,9 @@ export function registerDesktopCommands(program: Command): void {
     .description("Pair a desktop node")
     .requiredOption("--code <code>", "Pairing code from the desktop application")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.desktop.pair({ code: opts.code });
-        console.log(chalk.green("Desktop node paired successfully."));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        // The SDK has no pairing-code exchange endpoint for DesktopAPI.
+        throw new Error("Pairing a desktop node is not supported by the current SDK.");
       }),
     );
 
@@ -37,7 +36,7 @@ export function registerDesktopCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.desktop.status(id);
+        const result = await client.desktop.getStatus(id);
         formatOutput(result, program.opts());
       }),
     );

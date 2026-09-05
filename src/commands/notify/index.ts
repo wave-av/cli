@@ -3,86 +3,131 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { optionalOneOf } from "../../lib/options.js";
 
+/**
+ * The SDK's NotificationsAPI is an inbox (list/get/read-state/preferences), not a
+ * send/template/channel-management service. There is no send(), templates.*, or
+ * channels.* surface to call — those commands previously called methods that never
+ * existed. Reconciled to the real inbox-style API below.
+ */
 export function registerNotifyCommands(program: Command): void {
   const notify = program.command("notify").description("Notification management");
 
   notify
-    .command("send")
-    .description("Send a notification")
-    .requiredOption("--to <userId>", "Recipient user ID")
-    .requiredOption("--template <templateId>", "Notification template ID")
-    .option("--data <json>", "JSON data for template variables")
-    .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const data = opts.data ? JSON.parse(opts.data as string) : undefined;
-        const result = await client.notifications.send({
-          to: opts.to,
-          template: opts.template,
-          data,
-        });
-        console.log(chalk.green("Notification sent."));
-        formatOutput(result, program.opts());
-      }),
-    );
-
-  const templates = notify.command("templates").description("Manage notification templates");
-
-  templates
     .command("list")
-    .description("List notification templates")
+    .description("List notifications")
+    .option("--status <status>", "Filter by status (unread, read, archived)")
     .option("--limit <n>", "Maximum results", "20")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.notifications.templates.list({
-          limit: parseInt(opts.limit),
+        const result = await client.notifications.list({
+          status: optionalOneOf("--status", opts.status, ["unread", "read", "archived"] as const),
+          limit: parseInt(opts.limit, 10),
         });
         formatOutput(result.data, program.opts());
       }),
     );
 
-  templates
+  notify
     .command("get <id>")
-    .description("Get a notification template")
+    .description("Get a notification")
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.notifications.templates.get(id);
+        const result = await client.notifications.get(id);
         formatOutput(result, program.opts());
       }),
     );
 
-  templates
-    .command("create")
-    .description("Create a notification template")
-    .requiredOption("--name <name>", "Template name")
-    .requiredOption("--body <body>", "Template body")
-    .option("--subject <subject>", "Template subject (for email)")
+  notify
+    .command("read <id>")
+    .description("Mark a notification as read")
     .action(
-      wrapCommand(async (opts) => {
+      wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.notifications.templates.create({
-          name: opts.name,
-          body: opts.body,
-          subject: opts.subject,
-        });
-        console.log(chalk.green(`Template created: ${result.id}`));
+        const result = await client.notifications.markAsRead(id);
+        console.log(chalk.green(`Notification ${id} marked read.`));
         formatOutput(result, program.opts());
       }),
     );
 
-  const channels = notify.command("channels").description("Manage notification channels");
-
-  channels
-    .command("list")
-    .description("List notification channels")
+  notify
+    .command("read-all")
+    .description("Mark all notifications as read")
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.notifications.channels.list();
-        formatOutput(result.data, program.opts());
+        const result = await client.notifications.markAllRead();
+        console.log(chalk.green(`${result.updated} notification(s) marked read.`));
+      }),
+    );
+
+  notify
+    .command("archive <id>")
+    .description("Archive a notification")
+    .action(
+      wrapCommand(async (id: string) => {
+        const client = await getClient(program.opts());
+        const result = await client.notifications.archive(id);
+        console.log(chalk.green(`Notification ${id} archived.`));
+        formatOutput(result, program.opts());
+      }),
+    );
+
+  notify
+    .command("remove <id>")
+    .description("Delete a notification")
+    .action(
+      wrapCommand(async (id: string) => {
+        const client = await getClient(program.opts());
+        await client.notifications.remove(id);
+        console.log(chalk.green(`Notification ${id} deleted.`));
+      }),
+    );
+
+  notify
+    .command("unread-count")
+    .description("Get the unread notification count")
+    .action(
+      wrapCommand(async () => {
+        const client = await getClient(program.opts());
+        const result = await client.notifications.getUnreadCount();
+        formatOutput(result, program.opts());
+      }),
+    );
+
+  const preferences = notify.command("preferences").description("Manage notification preferences");
+
+  preferences
+    .command("get")
+    .description("Get notification preferences")
+    .action(
+      wrapCommand(async () => {
+        const client = await getClient(program.opts());
+        const result = await client.notifications.getPreferences();
+        formatOutput(result, program.opts());
+      }),
+    );
+
+  preferences
+    .command("update")
+    .description("Update notification preferences")
+    .option("--digest-frequency <frequency>", "realtime, hourly, daily, or weekly")
+    .action(
+      wrapCommand(async (opts) => {
+        const client = await getClient(program.opts());
+        const result = await client.notifications.updatePreferences({
+          digest_frequency: optionalOneOf("--digest-frequency", opts.digestFrequency, [
+            "realtime",
+            "hourly",
+            "daily",
+            "weekly",
+          ] as const),
+        });
+        console.log(chalk.green("Preferences updated."));
+        formatOutput(result, program.opts());
       }),
     );
 }
