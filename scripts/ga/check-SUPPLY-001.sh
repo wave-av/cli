@@ -163,7 +163,11 @@ esac
 
 # --- checks 3 & 4: clauses this script does NOT machine-verify ------------------------------
 # Always reported explicitly, never silently omitted and never claimed as a pass.
-SBOM_WORKFLOW_HIT="$(grep -ril -E 'sbom|cyclonedx|syft|spdx' "${REPO_ROOT}/.github" 2>/dev/null | head -1)"
+# Excludes ga-evidence.yml itself: that workflow's own comments discuss the SBOM clause it does
+# NOT verify, which would otherwise self-match and misreport this very workflow as a "candidate"
+# SBOM generator.
+SBOM_WORKFLOW_HIT="$(grep -ril -E 'sbom|cyclonedx|syft|spdx' "${REPO_ROOT}/.github" \
+  --exclude='ga-evidence.yml' 2>/dev/null | head -1)"
 if [ -n "$SBOM_WORKFLOW_HIT" ]; then
   emit "UNKNOWN sbom-attached: found a candidate SBOM-related workflow (${SBOM_WORKFLOW_HIT#"$REPO_ROOT"/}) but this script does not yet parse its output — extend check-SUPPLY-001.sh before trusting this clause"
 else
