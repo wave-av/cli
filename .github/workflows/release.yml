@@ -113,6 +113,24 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      # npm trusted publishing (OIDC) requires npm >= 11.5.1; Node 22 bundles an older npm
+      # (10.9.2 as of this writing), under which the OIDC path silently cannot run and every
+      # publish falls through to the NPM_TOKEN fallback even when a Trusted Publisher IS
+      # registered. Pinned to an exact version so this privileged job never runs an unvetted
+      # npm release with its OIDC publishing credentials, then PROVE the floor is met.
+      - name: Upgrade npm to a trusted-publishing-capable CLI (>= 11.5.1)
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.19.0
+          NPM_VER="$(npm --version)"
+          echo "npm version: $NPM_VER"
+          NPM_VER="$NPM_VER" node -e "
+            const cur=process.env.NPM_VER.split('.').map(Number), min=[11,5,1];
+            for(let i=0;i<3;i++){
+              if(cur[i]>min[i]) process.exit(0);
+              if(cur[i]<min[i]){console.error('npm '+process.env.NPM_VER+' < 11.5.1 - trusted publishing unavailable');process.exit(1);}
+            }"
+
       # --include=dev explicitly (from `main`): devDependencies carry tsup,
       # typescript and vitest — every gate below needs them, and a
       # NODE_ENV=production runner would otherwise silently skip them.
@@ -405,3 +423,83 @@ jobs:
         run: |
           set -euo pipefail
           npm publish --access public --provenance --tag "$DIST_TAG"
+
+  # -----------------------------------------------------------------------------------------
+  # Post-publish verification. Proves the version that just left `publish` is actually live
+  # and correct on the real registry -- not just that `npm publish` returned 0. The `publish`
+  # job's own smoke test installs the packed TARBALL before publish; this job installs the
+  # PUBLISHED package from the real registry afterward, which is the only way to catch a
+  # publish that reached npm but shipped something other than what was tested (a stale
+  # registry cache, a race with another publish, npm mangling the tarball in transit).
+  # -----------------------------------------------------------------------------------------
+  verify-publish:
+    name: Verify published package (live registry)
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Resolve expected version from tag
+        id: ver
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: npm view — published version is live on the registry
+        env:
+          EXPECTED: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          PUBLISHED=""
+          for i in 1 2 3 4 5 6 7 8; do
+            PUBLISHED="$(npm view @wave-av/cli@"$EXPECTED" version 2>/dev/null || true)"
+            if [ "$PUBLISHED" = "$EXPECTED" ]; then break; fi
+            echo "waiting for the registry to index @wave-av/cli@$EXPECTED (attempt $i)"
+            sleep 15
+          done
+          if [ "$PUBLISHED" != "$EXPECTED" ]; then
+            echo "::error::npm view never returned $EXPECTED for @wave-av/cli"
+            exit 1
+          fi
+          echo "npm view: @wave-av/cli@$EXPECTED confirmed live"
+
+      - name: Fresh install from the real registry (not the packed tarball)
+        env:
+          EXPECTED: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/verify"
+          echo "SMOKE=$RUNNER_TEMP/verify" >> "$GITHUB_ENV"
+          cd "$RUNNER_TEMP/verify"
+          npm init -y >/dev/null
+          npm install "@wave-av/cli@$EXPECTED" --registry=https://registry.npmjs.org
+          GOT="$(npx --no wave --version)"
+          echo "expected=$EXPECTED got=$GOT"
+          if [ "$GOT" != "$EXPECTED" ]; then
+            echo "::error::published package reports version '$GOT', expected '$EXPECTED'"
+            exit 1
+          fi
+
+      - name: Default endpoint is api.wave.online, never wave.online
+        # `wave status` is unauthenticated in this job (no keychain entry exists on a fresh
+        # runner), so it always reports "not authenticated" -- what matters here is which
+        # host the published binary targets by default, read back via --output json rather
+        # than grepping stdout copy that could change wording without changing behavior.
+        run: |
+          set -euo pipefail
+          cd "$SMOKE"
+          # `status` prints a human summary AND a trailing JSON block under --output json; the
+          # command's own exit code is non-zero when unauthenticated/unreachable (by design --
+          # see cli.test.ts), so this step captures output regardless of exit status and parses
+          # only the JSON block (from the first '{' onward), not the whole mixed stream.
+          OUT="$(npx --no wave status --output json 2>&1 || true)"
+          echo "$OUT"
+          ENDPOINT="$(echo "$OUT" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const i=d.indexOf('{');try{console.log(JSON.parse(d.slice(i)).apiEndpoint||'')}catch{console.log('')}})")"
+          echo "apiEndpoint=$ENDPOINT"
+          if [ "$ENDPOINT" != "https://api.wave.online" ]; then
+            echo "::error::published package's default apiEndpoint is '$ENDPOINT', expected https://api.wave.online"
+            exit 1
+          fi
