@@ -1,0 +1,215 @@
+name: (reusable) Release verify — secret-scan + build/e2e-smoke
+
+# Reusable workflow, called only from release.yml. Split out of release.yml
+# under the repo's file-size gate (one release.yml grew past the token
+# budget once resolve/backfill/release-creation logic was added) — this file
+# owns Gates 1+2 of the release pipeline; _release-publish.yml owns Gate 3.
+#
+# Gate 1 — secret-scan: org-standard gitleaks (pinned + checksum-verified)
+#          over the published tree + the WAVE content-policy trade-secret gate.
+# Gate 2 — verify: install + type-check + test + build, then an e2e-smoke
+#          that PACKS the real tarball, installs it into a throwaway project,
+#          imports it as ESM, checks the declared `wave` bin exists and is
+#          executable, and RUNS it to prove three-way version parity
+#          (package.json == `wave --version` == the startup banner's version —
+#          @wave-av/cli@1.0.8 shipped printing a hardcoded "v1.0.0", which an
+#          existence-only check would have missed).
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+
+jobs:
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+
+      - name: Install gitleaks (pinned + checksum-verified)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          set -euo pipefail
+          curl -fsSL --proto '=https' --tlsv1.2 -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          rm -f gitleaks gitleaks.tar.gz
+          gitleaks version
+
+      - name: gitleaks (secret scan — published tree)
+        run: gitleaks detect --no-git --source . --config .gitleaks.toml --redact --no-banner --exit-code 1
+
+      - name: Install ripgrep
+        run: command -v rg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep)
+
+      - name: content policy (WAVE trade-secret / internal-leak gate)
+        env:
+          GUARD_PRIVATE_REPOS: ${{ vars.GUARD_PRIVATE_REPOS }}
+        run: bash scripts/public-repo-guard/content-policy.sh .
+
+  verify:
+    name: Build + e2e-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # --include=dev explicitly: devDependencies carry tsup, typescript and
+      # vitest — every gate below needs them, and a NODE_ENV=production
+      # runner would otherwise silently skip them.
+      - name: Install
+        run: npm ci --include=dev
+
+      # NOTE: a `Lint` step (`npm run lint` -> `eslint src/`) previously lived
+      # here and failed release run 33826226004 with `eslint: not found`
+      # (exit 127). `eslint` was never a devDependency and no eslint config
+      # exists anywhere in this repo, so that step could NEVER pass — it was
+      # a wall, not a gate. It has been removed rather than papered over with
+      # `continue-on-error` (which would have made it a fake-pass instead of
+      # a real check). Type-check below already runs on every release and is
+      # a check that can genuinely pass or fail.
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # secret-scan only scans the checked-out source tree, BEFORE `npm run
+      # build` runs. Anything the build step generates or bundles into
+      # dist/ is what actually ships to npm and has never been scanned.
+      # Re-run the same pinned+checksum-verified gitleaks over the build
+      # output so the "secret-scanned" claim covers what npm actually
+      # receives.
+      - name: Install gitleaks (pinned + checksum-verified)
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          set -euo pipefail
+          curl -fsSL --proto '=https' --tlsv1.2 -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          rm -f gitleaks gitleaks.tar.gz
+
+      - name: gitleaks (secret scan — build output)
+        run: |
+          set -euo pipefail
+          if [ -d dist ]; then
+            gitleaks detect --no-git --source dist --config .gitleaks.toml --redact --no-banner --exit-code 1
+          else
+            echo "::warning title=no dist directory::npm run build produced no dist/ - nothing to scan"
+          fi
+
+      - name: e2e-smoke — pack, install and RUN the real tarball
+        run: |
+          set -euo pipefail
+          EXPECTED="$(node -p "require('./package.json').version")"
+          TARBALL="$(npm pack --silent | tail -n1)"
+          TARBALL="$PWD/$TARBALL"
+          echo "packed: $TARBALL (expected version $EXPECTED)"
+          # Disposable project, outside the workspace, with lifecycle scripts
+          # disabled: this installs a freshly built artifact and we do not want
+          # its dependency install hooks executing on the runner. npm still
+          # links declared bins under --ignore-scripts, so the bin below is
+          # genuinely the one a `npm i -g @wave-av/cli` user would get.
+          SMOKE="$(mktemp -d)"
+          cd "$SMOKE"
+          npm init -y >/dev/null 2>&1
+          npm install --no-save --ignore-scripts "$TARBALL" >/dev/null 2>&1
+
+          # ESM resolution. @wave-av/cli is "type": "module" with no `require`
+          # export condition, so a CJS require() smoke would fail on a correctly
+          # built package — only the ESM path is exercised.
+          #
+          # NOTE: this deliberately RESOLVES rather than IMPORTS. package.json
+          # sets "main" and "bin.wave" to the SAME file (./dist/index.js), so
+          # `import * as m from '@wave-av/cli'` does not import a library — it
+          # EXECUTES the CLI, which with no argv prints help and exits non-zero.
+          # Measured: that import exits 1 against a correctly built 1.0.9, so an
+          # import-and-count-exports assertion can never pass here. Resolution
+          # proves the entry point is declared and present; the bin run below
+          # proves the ESM graph actually loads (which is the "module is not
+          # defined in ES module scope" class of break that took down 1.0.8).
+          node --input-type=module -e "const u=import.meta.resolve('@wave-av/cli'); if(!u){console.error('ESM resolution failed for @wave-av/cli');process.exit(1);} console.log('ESM resolve ok:',u);"
+
+          # The declared `wave` bin actually exists in the packed tree and is
+          # executable. This is a CLI package — the bin IS the product.
+          PKG_DIR="$SMOKE/node_modules/@wave-av/cli" node -e "
+            const fs=require('fs'),path=require('path');
+            const dir=process.env.PKG_DIR;
+            const pkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8'));
+            const bins=typeof pkg.bin==='string'?{[pkg.name]:pkg.bin}:(pkg.bin||{});
+            const names=Object.keys(bins);
+            if(names.length===0){console.error('no bin declared - @wave-av/cli is expected to ship a bin');process.exit(1);}
+            if(!bins.wave){console.error('no \"wave\" bin declared - @wave-av/cli is expected to ship a bin named exactly \"wave\", found: '+names.join(', '));process.exit(1);}
+            for(const n of names){
+              const f=path.join(dir,bins[n]);
+              if(!fs.existsSync(f)){console.error('declared bin missing from tarball: '+n+' -> '+bins[n]);process.exit(1);}
+              try{ fs.accessSync(f, fs.constants.X_OK); }catch{ console.error('declared bin not executable: '+n+' -> '+bins[n]); process.exit(1); }
+              console.log('bin ok (exists + executable):',n,'->',bins[n]);
+            }"
+
+          # --- VERSION TRUTH (VER-001 / ART-001) -------------------------------
+          # 1.0.8 shipped to npm with `--version` hardcoded to "1.0.0". Existence
+          # checks cannot catch that; only running the artifact can. Run the
+          # INSTALLED bin, not the source tree.
+          WAVE_BIN="$SMOKE/node_modules/.bin/wave"
+          test -x "$WAVE_BIN" || { echo "::error::no executable bin linked at $WAVE_BIN"; exit 1; }
+
+          ACTUAL_VERSION="$("$WAVE_BIN" --version 2>&1 | tr -d '[:space:]')"
+          echo "smoke: wave --version -> '$ACTUAL_VERSION' (expected '$EXPECTED')"
+          if [ "$ACTUAL_VERSION" != "$EXPECTED" ]; then
+            echo "::error::version parity failed: 'wave --version' printed '$ACTUAL_VERSION', package.json says '$EXPECTED'"
+            exit 1
+          fi
+
+          # The BANNER is a separate code path (src/cli.ts printBanner()) that
+          # renders its own `v<version>` string, and it is suppressed whenever
+          # the CLI detects CI or an agent — which is exactly the case on this
+          # runner. Clear those signals so the banner actually renders, then
+          # assert the version it prints. This is the surface the 1.0.8 defect
+          # was visible on; asserting `--version` alone would not have caught a
+          # banner that had drifted independently.
+          BANNER_OUT="$(env -u CI -u GITHUB_ACTIONS -u GITHUB_ACTION -u VERCEL -u BUILDKITE \
+                            -u GITLAB_CI -u CIRCLECI -u WAVE_AGENT -u CLAUDE_CODE \
+                            -u CURSOR_SESSION -u AIDER_SESSION -u CONTINUE_SESSION \
+                            NO_COLOR=1 "$WAVE_BIN" --help 2>&1 || true)"
+          if ! printf '%s' "$BANNER_OUT" | grep -qF "Enterprise Streaming Platform"; then
+            echo "::error::banner did not render — cannot assert banner version parity. Output was:"
+            printf '%s\n' "$BANNER_OUT"
+            exit 1
+          fi
+          if ! printf '%s' "$BANNER_OUT" | grep -qF "v$EXPECTED"; then
+            echo "::error::banner version parity failed: startup banner does not print 'v$EXPECTED'. Banner line was:"
+            printf '%s\n' "$BANNER_OUT" | grep -F "Enterprise Streaming Platform" || true
+            exit 1
+          fi
+          echo "smoke: banner prints v$EXPECTED — three-way parity OK (package.json == --version == banner)"
