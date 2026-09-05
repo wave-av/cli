@@ -5,7 +5,29 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- **The package declared MIT while shipping the Apache-2.0 license text.** `package.json`
+  said `"license": "MIT"` and the README's License section said MIT, but `LICENSE` has been
+  the Apache-2.0 text since 5da8018 ("chore: adopt Apache-2.0 license + add NOTICE",
+  2026-06-04). All four declarations — `package.json`, `README.md`, `package-lock.json` and
+  the `LICENSE` file — now say Apache-2.0.
+- **The Apache-2.0 `NOTICE` never reached the published tarball.** npm always includes
+  `LICENSE` regardless of the `files` array, but not `NOTICE`; Apache-2.0 §4(d) requires
+  redistributions to carry it. `NOTICE` (and `LICENSE`, explicitly) are now in `files`.
+- The `[1.0.8]` entry below records "License changed to Apache-2.0, replacing MIT". That is
+  true of the repository, not of the release: `@wave-av/cli@1.0.8` was published to npm on
+  2026-04-03, two months before the Apache-2.0 adoption commit, and its tarball contains the
+  MIT text with MIT metadata. Apache-2.0 has never been published for this package. The
+  history is left as written; this note is the correction.
+
 ### Added
+- `npm run license:check` — an offline gate that fails when any declared license disagrees
+  with the license text actually in `LICENSE`, when `LICENSE`/`NOTICE` would not ship in the
+  tarball, or when a runtime dependency carries strong copyleft. Wired into CI as
+  `license-truth / local-truth`.
+- `npm run license:ledger` — regenerates `LICENSE-LEDGER.md` by downloading every published
+  WAVE npm tarball and PyPI wheel, reading the LICENSE inside it, and comparing all of it
+  against what each source repository declares today. Runs weekly and on demand.
 - `wave webhook-subscriptions list|create` — manage the platform's own event-subscription
   surface, distinct from `wave connect` third-party webhooks (#37).
 - `wave identity resolve <identifier>` — resolve an agent identity through the fleet directory

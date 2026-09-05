@@ -1,0 +1,84 @@
+name: license-truth
+
+# Blocks the class of defect this repo shipped for five months: `package.json` declared MIT
+# while the LICENSE file beside it was the Apache-2.0 text, and the Apache-2.0 NOTICE the
+# repo adopted never reached the published tarball at all. Nothing in the existing gates
+# reads a license FILE, so nothing could see it.
+#
+# Two jobs on purpose:
+#   local-truth    — offline, reads only files in the repo. Deterministic, safe to require.
+#   registry-drift — hits npm and PyPI. Scheduled/manual ONLY, because a required check that
+#                    depends on a third-party registry being up is a check that goes red for
+#                    reasons that have nothing to do with the pull request.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Mondays 08:00 UTC — reconcile every published WAVE artifact against its source repo.
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-truth:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --include=dev
+
+      # Declared vs shipped: package.json, README, lockfile, the LICENSE file's actual text,
+      # whether LICENSE and NOTICE are in the tarball npm would publish, and strong copyleft
+      # in the runtime dependency tree.
+      - name: License truth gate
+        run: npm run license:check
+
+      - name: License gate unit tests
+        run: npx vitest run scripts/
+
+  registry-drift:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --include=dev
+
+      # Downloads every published WAVE tarball and wheel, reads the LICENSE inside it, and
+      # compares it against what the source repo declares today. `--check` makes a drifted
+      # artifact fail the run rather than quietly regenerating a ledger nobody reads.
+      - name: Reconcile published artifacts against source
+        run: npm run license:ledger -- --check
+
+      - name: Upload regenerated ledger
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: license-ledger
+          path: LICENSE-LEDGER.md
+          if-no-files-found: error
