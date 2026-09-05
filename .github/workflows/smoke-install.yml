@@ -5,9 +5,21 @@ name: smoke-install
 # died before argv parsing with a module-resolution error. That class of bug — a real,
 # already-published dependency drifting a fresh install into a broken combination — only
 # shows up when you install the ACTUAL published tarball against the ACTUAL registry, so
-# this workflow builds the package, packs it, and installs the tarball into a throwaway
-# project exactly the way a real user's `npm install` would. Unit tests and type-check
-# cannot catch this: they run against the local, already-linked node_modules tree.
+# the `smoke` job below builds the package, packs it, and installs the tarball into a
+# throwaway project exactly the way a real user's `npm install` would. Unit tests and
+# type-check alone cannot catch THAT specific class (a tarball/registry resolution break
+# only shows up against the real, packed artifact) — that is why `smoke` exists as a
+# separate job.
+#
+# CLI-4267 (2026-09-05): `type-check` used to run NOWHERE on this path. It was declared
+# in package.json (`tsc --noEmit`) but the only workflow that ever invoked it was
+# `release.yml`, gated on `push: tags: v*` — i.e. strictly AFTER a release was already
+# cut. `npm run build` uses `tsup` (esbuild), which strips types and never checks them,
+# so `build` + `test` going green here proved nothing about type correctness. Tag
+# `v1.0.9` fired release.yml and failed at the `Type-check` step with 142 real TS2339/
+# TS2353/TS2551/TS2554/TS2561/TS2345 errors on a commit every PR and push-to-main gate
+# had already called green. The `unit` job below now runs `type-check` on every PR and
+# every push to `main`, so that class of false-green can no longer reach a tag.
 
 on:
   pull_request:
@@ -39,8 +51,21 @@ jobs:
           node-version: 22
           cache: npm
 
+      # --include=dev explicitly: devDependencies carry typescript, vitest and tsup —
+      # every step below needs them, and a runner with a production-leaning npm config
+      # (e.g. NODE_ENV=production, or a global `omit=dev`) would otherwise silently skip
+      # them, which is exactly the class of "looked installed, wasn't" failure that made
+      # this gate measure the wrong thing in the first place (see CLI-4267 note above).
       - name: Install dependencies
-        run: npm ci --prefer-offline
+        run: npm ci --prefer-offline --include=dev
+
+      # CLI-4267: this is the step that did not exist anywhere on the pull_request /
+      # push:main path before this PR. It must be able to go red — no `continue-on-error`,
+      # no `if:` that could skip it, no widening of a type to make it pass. A `tsc --noEmit`
+      # failure exits non-zero, which fails this step, which fails this job, which reports
+      # GitHub conclusion `failure` on the check — never `success`, `neutral`, or `skipped`.
+      - name: Type-check
+        run: npm run type-check
 
       - name: Build
         run: npm run build
