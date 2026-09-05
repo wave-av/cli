@@ -2,6 +2,7 @@
   s_73ce9d874d7339::t_f9936366a53d97 295-297,299-301,306-307,309-310
   s_73ce9d874d7339::t_25ca4809dcb784 476-479,482
   s_73ce9d874d7339::t_26a2b379615285 408-418,420-475,480-481,483-487
+  s_49793c5a9de056::t_5fc7eb8e9b52f9 419
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -9,6 +10,14 @@
   "base_commit_sha": "465054e58dc9ff459788506eacf78db065a95ea8",
   "prompts": {},
   "sessions": {
+    "s_49793c5a9de056": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d315ea56-91aa-4d81-9939-eac4eba83179",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    },
     "s_73ce9d874d7339": {
       "agent_id": {
         "tool": "claude",
