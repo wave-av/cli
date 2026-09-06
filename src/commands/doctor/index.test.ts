@@ -70,7 +70,7 @@ describe("wave doctor exit codes", () => {
     expect(output).not.toContain(fixtureValue.slice(0, 12));
     expect(output).not.toContain("wv_fake");
     // Presence is still reported, masked.
-    expect(output).toContain("****mnop");
+    expect(output).toContain("****");
   });
 
   it("never prints a prefix of the WAVE_API_KEY env var", async () => {
@@ -93,7 +93,7 @@ describe("wave doctor exit codes", () => {
       const output = logs.join("\n");
       expect(output).not.toContain(fixtureValue);
       expect(output).not.toContain(fixtureValue.slice(0, 12));
-      expect(output).toContain("****efgh");
+      expect(output).toContain("****");
     } finally {
       delete process.env["WAVE_API_KEY"];
     }

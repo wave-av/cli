@@ -1,36 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { maskSecret } from "./mask.js";
+import { ABSENT_PLACEHOLDER, MASKED_PLACEHOLDER, maskSecret } from "./mask.js";
 
 /**
  * Security regression test for CodeQL js/clear-text-logging (alert #1).
  * `wave doctor` printed `apiKey.slice(0, 12)` — a 12-character PREFIX of a live API key.
  */
 describe("maskSecret", () => {
-  it("never reveals the start of a secret", () => {
-    const key = "wv_fake_abcdefghijklmnop";
-    const masked = maskSecret(key);
+  const fixtureValue = "wv_fake_abcdefghijklmnop";
 
+  it("reveals no part of the secret at all", () => {
+    const masked = maskSecret(fixtureValue);
+
+    expect(masked).toBe(MASKED_PLACEHOLDER);
+    // No substring of the input of length >= 2 may survive into the output.
+    for (let start = 0; start < fixtureValue.length - 1; start += 1) {
+      for (let end = start + 2; end <= fixtureValue.length; end += 1) {
+        expect(masked).not.toContain(fixtureValue.slice(start, end));
+      }
+    }
+  });
+
+  it("does not reveal a prefix (the original bug) or a suffix", () => {
+    const masked = maskSecret(fixtureValue);
+    expect(masked).not.toContain(fixtureValue.slice(0, 12));
+    expect(masked).not.toContain(fixtureValue.slice(-4));
     expect(masked).not.toContain("wv_fake");
-    expect(masked).not.toContain(key.slice(0, 12));
-    expect(masked.startsWith("****")).toBe(true);
-  });
-
-  it("reveals at most the last 4 characters", () => {
-    expect(maskSecret("wv_fake_abcdefghijklmnop")).toBe("****mnop");
-  });
-
-  it("masks short values completely rather than revealing most of them", () => {
-    expect(maskSecret("short")).toBe("****");
-    expect(maskSecret("elevenchar")).toBe("****");
   });
 
   it("does not leak the length of the secret", () => {
-    expect(maskSecret("a".repeat(20))).toHaveLength(maskSecret("b".repeat(200)).length);
+    expect(maskSecret("a".repeat(20))).toBe(maskSecret("b".repeat(200)));
   });
 
-  it("handles empty and nullish input without throwing", () => {
-    expect(maskSecret("")).toBe("****");
-    expect(maskSecret(null)).toBe("****");
-    expect(maskSecret(undefined)).toBe("****");
+  it("still distinguishes a configured secret from a missing one", () => {
+    expect(maskSecret(fixtureValue)).toBe(MASKED_PLACEHOLDER);
+    expect(maskSecret("")).toBe(ABSENT_PLACEHOLDER);
+    expect(maskSecret(null)).toBe(ABSENT_PLACEHOLDER);
+    expect(maskSecret(undefined)).toBe(ABSENT_PLACEHOLDER);
   });
 });
