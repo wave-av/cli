@@ -7,16 +7,16 @@ import { maskSecret } from "./mask.js";
  */
 describe("maskSecret", () => {
   it("never reveals the start of a secret", () => {
-    const key = "wv_live_abcdefghijklmnop";
+    const key = "wv_fake_abcdefghijklmnop";
     const masked = maskSecret(key);
 
-    expect(masked).not.toContain("wv_live");
+    expect(masked).not.toContain("wv_fake");
     expect(masked).not.toContain(key.slice(0, 12));
     expect(masked.startsWith("****")).toBe(true);
   });
 
   it("reveals at most the last 4 characters", () => {
-    expect(maskSecret("wv_live_abcdefghijklmnop")).toBe("****mnop");
+    expect(maskSecret("wv_fake_abcdefghijklmnop")).toBe("****mnop");
   });
 
   it("masks short values completely rather than revealing most of them", () => {

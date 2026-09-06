@@ -55,20 +55,20 @@ describe("wave doctor exit codes", () => {
       logs.push(args.map(String).join(" "));
     });
 
-    const secret = "wv_live_abcdefghijklmnop";
+    const fixtureValue = "wv_fake_abcdefghijklmnop";
     const config = getDefaultConfig();
     config.projects["default"] = { organizationId: "org_1", organizationName: "Acme" };
     vi.mocked(loadConfig).mockResolvedValue(config);
-    vi.mocked(getApiKey).mockResolvedValue(secret);
+    vi.mocked(getApiKey).mockResolvedValue(fixtureValue);
     delete process.env["WAVE_API_KEY"];
 
     const program = buildProgram();
     await program.parseAsync(["node", "wave", "doctor"]);
 
     const output = logs.join("\n");
-    expect(output).not.toContain(secret);
-    expect(output).not.toContain(secret.slice(0, 12));
-    expect(output).not.toContain("wv_live");
+    expect(output).not.toContain(fixtureValue);
+    expect(output).not.toContain(fixtureValue.slice(0, 12));
+    expect(output).not.toContain("wv_fake");
     // Presence is still reported, masked.
     expect(output).toContain("****mnop");
   });
@@ -79,20 +79,20 @@ describe("wave doctor exit codes", () => {
       logs.push(args.map(String).join(" "));
     });
 
-    const secret = "wv_live_envkeyabcdefgh";
+    const fixtureValue = "wv_fake_envkeyabcdefgh";
     const config = getDefaultConfig();
     config.projects["default"] = { organizationId: "org_1", organizationName: "Acme" };
     vi.mocked(loadConfig).mockResolvedValue(config);
     vi.mocked(getApiKey).mockResolvedValue(null);
-    process.env["WAVE_API_KEY"] = secret;
+    process.env["WAVE_API_KEY"] = fixtureValue;
 
     try {
       const program = buildProgram();
       await program.parseAsync(["node", "wave", "doctor"]);
 
       const output = logs.join("\n");
-      expect(output).not.toContain(secret);
-      expect(output).not.toContain(secret.slice(0, 12));
+      expect(output).not.toContain(fixtureValue);
+      expect(output).not.toContain(fixtureValue.slice(0, 12));
       expect(output).toContain("****efgh");
     } finally {
       delete process.env["WAVE_API_KEY"];
