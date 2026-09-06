@@ -485,3 +485,62 @@ jobs:
             echo "::error::published package's default apiEndpoint is '$ENDPOINT', expected https://api.wave.online"
             exit 1
           fi
+
+  # -----------------------------------------------------------------------------------------
+  # VER-001. Create the GitHub Release for the tag once the artifact is confirmed live on npm
+  # (needs BOTH `publish` and `verify-publish` to succeed — never on a failed/skipped publish,
+  # and never on a `npm publish` that "returned 0" but was not actually confirmed live).
+  # Idempotent: a Release that already exists for this tag gets its tarball re-uploaded with
+  # --clobber instead of failing on "already exists".
+  # -----------------------------------------------------------------------------------------
+  release:
+    name: Create GitHub Release
+    needs: [publish, verify-publish]
+    if: needs.publish.result == 'success' && needs.verify-publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # create/upload the Release for this tag — nothing else
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci --include=dev
+
+      - run: npm run build
+
+      # TAG_NAME comes from the environment (never interpolated into the script body), matching
+      # the "Verify tag matches package.json version" step above.
+      - name: Create or update the GitHub Release (idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TARBALL="$(npm pack --silent | tail -n1)"
+          echo "packed: $TARBALL"
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "release $TAG_NAME already exists — uploading tarball (idempotent path, --clobber)"
+            gh release upload "$TAG_NAME" "$TARBALL" --clobber
+          else
+            echo "release $TAG_NAME does not exist — creating with generated notes"
+            gh release create "$TAG_NAME" "$TARBALL" --title "$TAG_NAME" --generate-notes
+          fi
+          echo "verifying the release exists and carries the tarball"
+          ASSETS="$(gh release view "$TAG_NAME" --json assets --jq '[.assets[].name] | join(" ")')"
+          echo "release assets: $ASSETS"
+          case "$ASSETS" in
+            *"$TARBALL"*) ;;
+            *)
+              echo "::error::$TARBALL missing from release $TAG_NAME after upload"
+              exit 1
+              ;;
+          esac
+          echo "VER-001: GitHub Release for $TAG_NAME exists and carries the packed tarball."
