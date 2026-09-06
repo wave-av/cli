@@ -1,11 +1,11 @@
 /**
- * Wire types for `POST /v1/compose`.
+ * Wire types for `POST /v1/compose` (served at api.wave.online).
  *
- * Mirrored structurally from `wave-gateway` `src/compose-types.ts` at commit `bb389ca` on branch
- * `feat/compose-engine` (not yet merged to `wave-gateway:main`; the route is a 501 stub there
- * today). `@wave-av/sdk` does not export these types yet (that lands in a separate PR4-SDK lane),
- * so this command defines its own local copy rather than depend on an unpublished SDK surface.
- * Field names are canon; do not rename to match unrelated conventions in this repo.
+ * Mirrored structurally from the engine's wire contract at commit `bb389ca` (an unmerged branch;
+ * `POST /v1/compose` is still a 501 stub on the live default route today). `@wave-av/sdk` does not
+ * export these types yet (that lands in a separate SDK lane), so this command defines its own
+ * local copy rather than depend on an unpublished SDK surface. Field names are canon; do not
+ * rename to match unrelated conventions in this repo.
  */
 
 export interface ComposeRequest {

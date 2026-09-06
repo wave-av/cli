@@ -3,8 +3,8 @@ import { renderComposeMarkdown } from "./render.js";
 import type { ComposeProposal } from "./types.js";
 
 /**
- * Fixture shaped like the `POST /v1/compose` §2c example (webinar captions composition), field
- * names cited to `wave-gateway` `compose-types.ts` at commit `bb389ca`, branch `feat/compose-engine`.
+ * Fixture shaped like the `POST /v1/compose` response example (webinar captions composition),
+ * field names cited to the wire contract at commit `bb389ca`.
  */
 const FIXTURE: ComposeProposal = {
   id: "prp_webinar_fixture",

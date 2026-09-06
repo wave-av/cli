@@ -6,12 +6,11 @@ import { isQuotedPriceRow } from "./types.js";
  * proposal object always renders the same string, which is what the rendering-parity test in
  * `index.test.ts` checks against a recorded fixture.
  *
- * Note: the gateway's `POST /v1/compose` response (`compose-types.ts` at `wave-gateway` commit
- * `bb389ca`, branch `feat/compose-engine`) carries no `markdown` field of its own - the four
- * renderings (API, CLI, SDK, MCP) each render the structured object independently. This function
- * is the CLI's rendering; "rendering parity" here means this function is pure and deterministic
- * against a fixed fixture, not a byte-for-byte match against a gateway-side markdown string that
- * does not exist in the contract.
+ * Note: the `POST /v1/compose` response (the wire contract at commit `bb389ca`) carries no
+ * `markdown` field of its own - the four renderings (API, CLI, SDK, MCP) each render the
+ * structured object independently. This function is the CLI's rendering; "rendering parity" here
+ * means this function is pure and deterministic against a fixed fixture, not a byte-for-byte
+ * match against a server-side markdown string that does not exist in the contract.
  */
 export function renderComposeMarkdown(proposal: ComposeProposal): string {
   const lines: string[] = [];
