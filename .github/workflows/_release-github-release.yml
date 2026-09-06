@@ -1,0 +1,73 @@
+name: (reusable) Release — create GitHub Release + attach tarball
+
+# Reusable workflow, called only from release.yml, after _release-publish.yml
+# has confirmed the version is live on npm (or was already live, on a
+# backfill run). This is the fix for VER-001: @wave-av/cli had a `v1.0.9` git
+# tag with no corresponding GitHub Release.
+#
+# Idempotent by design: if a Release for this tag already exists (e.g. a
+# re-run, or a backfill for a tag someone already released by hand), this
+# does NOT fail and does NOT recreate it — it logs that fact and still
+# (re-)attaches the packed tarball asset via `gh release upload --clobber`,
+# so re-running never regresses a release that already has one from a
+# working run.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      # Build the EXACT tree this tag ships, so the tarball attached to the
+      # Release is the real release artifact, not a stale/partial checkout.
+      - name: Install + build (to pack the exact released tarball)
+        run: |
+          set -euo pipefail
+          npm ci --include=dev --ignore-scripts
+          npm run build
+
+      - name: Pack tarball for release asset
+        id: pack
+        run: |
+          set -euo pipefail
+          TARBALL="$(npm pack --silent | tail -n1)"
+          echo "tarball=$PWD/$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "packed $TARBALL"
+
+      - name: Create or update GitHub Release (idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "release for $TAG already exists — not recreating (idempotent), ensuring the tarball asset is attached"
+          else
+            echo "creating GitHub Release for $TAG"
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --generate-notes
+          fi
+          echo "attaching packed tarball (--clobber makes re-attachment idempotent)"
+          gh release upload "$TAG" "$TARBALL" --repo "$REPO" --clobber
