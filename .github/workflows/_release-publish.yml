@@ -61,6 +61,10 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+          # Cache-poisoning guard — same reasoning as _release-verify.yml, and this job holds
+          # `id-token: write` for OIDC trusted publishing, so a poisoned npm cache restored here
+          # would execute inside the job that mints the publish credential.
+          package-manager-cache: false
 
       # Trusted publishing (OIDC) requires npm >= 11.5.1; Node 22 ships an older
       # npm (measured: Node v22.14.0 bundles npm 10.9.2 — below the floor, so

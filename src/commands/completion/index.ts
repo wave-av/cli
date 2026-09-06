@@ -111,13 +111,30 @@ ${cmdList}
 _wave`;
 }
 
-function generateFishCompletion(program: Command): string {
+/**
+ * Escape a value for embedding in a fish SINGLE-quoted string.
+ *
+ * fish is not POSIX here: inside `'...'` it still honours the two escapes `\\` and `\'`.
+ * So escaping only the quote (`desc.replace(/'/g, "\\'")`) is INCOMPLETE — a description
+ * ending in a backslash produced `...\\'`, where the backslash consumed the escape and the
+ * quote closed the literal early, letting the rest of the description be parsed as fish
+ * code by anyone running `wave completion fish | source`. Backslash must be escaped FIRST,
+ * otherwise the escaping pass rewrites the backslashes it just introduced.
+ *
+ * The zsh generator above deliberately keeps the POSIX `'\''` close-reopen idiom instead:
+ * inside POSIX single quotes a backslash is literal, so that form is already complete.
+ */
+export function escapeFishSingleQuoted(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+export function generateFishCompletion(program: Command): string {
   const commands = getCommandNames(program);
   const completions = commands
     .map((name) => {
       const cmd = program.commands.find((c) => c.name() === name);
       const desc = cmd?.description() ?? name;
-      return `complete -c wave -n '__fish_use_subcommand' -a '${name}' -d '${desc.replace(/'/g, "\\'")}'`;
+      return `complete -c wave -n '__fish_use_subcommand' -a '${escapeFishSingleQuoted(name)}' -d '${escapeFishSingleQuoted(desc)}'`;
     })
     .join("\n");
 

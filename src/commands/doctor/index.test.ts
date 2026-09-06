@@ -49,6 +49,56 @@ describe("wave doctor exit codes", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it("never prints a prefix of a stored API key (CodeQL js/clear-text-logging)", async () => {
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    });
+
+    const fixtureValue = "wv_fake_abcdefghijklmnop";
+    const config = getDefaultConfig();
+    config.projects["default"] = { organizationId: "org_1", organizationName: "Acme" };
+    vi.mocked(loadConfig).mockResolvedValue(config);
+    vi.mocked(getApiKey).mockResolvedValue(fixtureValue);
+    delete process.env["WAVE_API_KEY"];
+
+    const program = buildProgram();
+    await program.parseAsync(["node", "wave", "doctor"]);
+
+    const output = logs.join("\n");
+    expect(output).not.toContain(fixtureValue);
+    expect(output).not.toContain(fixtureValue.slice(0, 12));
+    expect(output).not.toContain("wv_fake");
+    // Presence is still reported, masked.
+    expect(output).toContain("****");
+  });
+
+  it("never prints a prefix of the WAVE_API_KEY env var", async () => {
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    });
+
+    const fixtureValue = "wv_fake_envkeyabcdefgh";
+    const config = getDefaultConfig();
+    config.projects["default"] = { organizationId: "org_1", organizationName: "Acme" };
+    vi.mocked(loadConfig).mockResolvedValue(config);
+    vi.mocked(getApiKey).mockResolvedValue(null);
+    process.env["WAVE_API_KEY"] = fixtureValue;
+
+    try {
+      const program = buildProgram();
+      await program.parseAsync(["node", "wave", "doctor"]);
+
+      const output = logs.join("\n");
+      expect(output).not.toContain(fixtureValue);
+      expect(output).not.toContain(fixtureValue.slice(0, 12));
+      expect(output).toContain("****");
+    } finally {
+      delete process.env["WAVE_API_KEY"];
+    }
+  });
+
   it("does not set a failing exit code when every check passes", async () => {
     const config = getDefaultConfig();
     config.projects["default"] = {
