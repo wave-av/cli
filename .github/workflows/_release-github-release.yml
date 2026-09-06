@@ -38,6 +38,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
+          # Cache-poisoning guard — same reasoning as _release-verify.yml: this job checks out a
+          # caller-supplied `inputs.sha`, and it PACKS the released tarball, so a poisoned npm
+          # cache restored here would ship inside the release artifact.
+          package-manager-cache: false
 
       # Build the EXACT tree this tag ships, so the tarball attached to the
       # Release is the real release artifact, not a stale/partial checkout.

@@ -63,24 +63,61 @@ export function registerConfigCommands(program: Command): void {
     );
 }
 
-function getNestedValue(obj: object, path: string): unknown {
+/**
+ * Path segments that must never be traversed or written.
+ *
+ * `wave config set <key> <value>` takes `key` straight from argv, so without this guard
+ * `wave config set __proto__.polluted x` walks INTO `Object.prototype` (it is an object,
+ * so the "create missing container" branch below accepts it) and assigns onto it —
+ * poisoning every object in the process for the rest of the run.
+ */
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Split a dotted config path into segments, rejecting anything unsafe.
+ *
+ * @throws if the path is empty, has an empty segment, or names a prototype-chain key.
+ */
+export function parseConfigPath(path: string): string[] {
   const keys = path.split(".");
+  if (keys.length === 0 || path === "") {
+    throw new Error("Configuration key must not be empty.");
+  }
+  for (const key of keys) {
+    if (key === "") {
+      throw new Error(`Invalid configuration key "${path}": empty path segment.`);
+    }
+    if (FORBIDDEN_KEYS.has(key)) {
+      throw new Error(
+        `Invalid configuration key "${path}": "${key}" is a reserved property name.`,
+      );
+    }
+  }
+  return keys;
+}
+
+export function getNestedValue(obj: object, path: string): unknown {
+  const keys = parseConfigPath(path);
   let current: unknown = obj;
   for (const key of keys) {
     if (current === null || current === undefined || typeof current !== "object") {
       return undefined;
     }
+    // Own properties only: an inherited member is not config the user set.
+    if (!Object.hasOwn(current, key)) return undefined;
     current = (current as Record<string, unknown>)[key];
   }
   return current;
 }
 
-function setNestedValue(obj: object, path: string, value: string): void {
-  const keys = path.split(".");
+export function setNestedValue(obj: object, path: string, value: string): void {
+  const keys = parseConfigPath(path);
   let current: Record<string, unknown> = obj as Record<string, unknown>;
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
-    if (typeof current[key] !== "object" || current[key] === null) {
+    // `Object.hasOwn` matters as much as the key guard: without it an INHERITED object-valued
+    // member would satisfy the typeof check and be descended into rather than shadowed.
+    if (!Object.hasOwn(current, key) || typeof current[key] !== "object" || current[key] === null) {
       current[key] = {};
     }
     current = current[key] as Record<string, unknown>;

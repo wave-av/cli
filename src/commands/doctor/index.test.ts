@@ -49,6 +49,56 @@ describe("wave doctor exit codes", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it("never prints a prefix of a stored API key (CodeQL js/clear-text-logging)", async () => {
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    });
+
+    const secret = "wv_live_abcdefghijklmnop";
+    const config = getDefaultConfig();
+    config.projects["default"] = { organizationId: "org_1", organizationName: "Acme" };
+    vi.mocked(loadConfig).mockResolvedValue(config);
+    vi.mocked(getApiKey).mockResolvedValue(secret);
+    delete process.env["WAVE_API_KEY"];
+
+    const program = buildProgram();
+    await program.parseAsync(["node", "wave", "doctor"]);
+
+    const output = logs.join("\n");
+    expect(output).not.toContain(secret);
+    expect(output).not.toContain(secret.slice(0, 12));
+    expect(output).not.toContain("wv_live");
+    // Presence is still reported, masked.
+    expect(output).toContain("****mnop");
+  });
+
+  it("never prints a prefix of the WAVE_API_KEY env var", async () => {
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    });
+
+    const secret = "wv_live_envkeyabcdefgh";
+    const config = getDefaultConfig();
+    config.projects["default"] = { organizationId: "org_1", organizationName: "Acme" };
+    vi.mocked(loadConfig).mockResolvedValue(config);
+    vi.mocked(getApiKey).mockResolvedValue(null);
+    process.env["WAVE_API_KEY"] = secret;
+
+    try {
+      const program = buildProgram();
+      await program.parseAsync(["node", "wave", "doctor"]);
+
+      const output = logs.join("\n");
+      expect(output).not.toContain(secret);
+      expect(output).not.toContain(secret.slice(0, 12));
+      expect(output).toContain("****efgh");
+    } finally {
+      delete process.env["WAVE_API_KEY"];
+    }
+  });
+
   it("does not set a failing exit code when every check passes", async () => {
     const config = getDefaultConfig();
     config.projects["default"] = {
