@@ -1,0 +1,48 @@
+src/commands/doctor/index.test.ts
+  s_efe86faf2558e9::t_dc4805581148e0 52-101
+src/lib/mask.ts
+  s_efe86faf2558e9::t_d616c04dea783b 1-33
+src/lib/mask.test.ts
+  s_efe86faf2558e9::t_14833be4dee4a4 1-36
+src/commands/doctor/index.ts
+  s_efe86faf2558e9::t_2c5b94cd2c970b 60-62
+  s_efe86faf2558e9::t_8dab440d3da85e 68
+  s_efe86faf2558e9::t_0a4be73f6c52bc 8
+src/commands/completion/index.ts
+  s_efe86faf2558e9::t_6af0bc6fb3eae3 127
+  s_efe86faf2558e9::t_de1769f9b631f1 131
+  s_efe86faf2558e9::t_9c335d5131f2e2 114-126,128-130,137
+templates/webhook-handler/src/index.ts
+  s_efe86faf2558e9::t_d1b6cb07e5282f 2,14-31,33
+templates/webhook-handler/package.json
+  s_efe86faf2558e9::t_5e1e323a68b58a 12-13
+.github/workflows/_release-github-release.yml
+  s_efe86faf2558e9::t_87948b451e26b6 41-44
+src/commands/config/index.ts
+  s_efe86faf2558e9::t_6f47bcafd8790d 66-81,83-100,106-107,113-114,118-120
+src/commands/config/index.test.ts
+  s_efe86faf2558e9::t_665edf050bc548 1-81
+src/commands/completion/index.test.ts
+  s_efe86faf2558e9::t_3636837d5727ca 47-79,81-83,85-90,92-104,108-114
+  s_efe86faf2558e9::t_317d61be91723c 1-46,80,84,91,105-107,115-116
+.github/workflows/_release-publish.yml
+  s_efe86faf2558e9::t_8c254220c2802b 64-67
+.github/workflows/_release-verify.yml
+  s_efe86faf2558e9::t_d468fda371e0e5 81-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "8260a5768bb2f1565cb8da141c942e5817579a89",
+  "prompts": {},
+  "sessions": {
+    "s_efe86faf2558e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b6e2e9-ab55-4d57-9d9f-d57a588ae688",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
