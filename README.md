@@ -82,6 +82,7 @@ wave stream list  # Uses env vars automatically
 | `captions`     | Live captions           | `wave captions generate --stream-id <id>`  |
 | `chapters`     | Chapter detection       | `wave chapters detect --recording-id <id>` |
 | `ai`           | AI assistant            | `wave ai assistant start`                  |
+| `compose`      | Composition proposals   | `wave compose "live captions for tomorrow's webinar"` |
 | `transcribe`   | Transcription           | `wave transcribe create --stream-id <id>`  |
 | `sentiment`    | Sentiment analysis      | `wave sentiment analyze --text "..."`      |
 | `search`       | Content search          | `wave search query --q "keyword"`          |
