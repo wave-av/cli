@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **`wave compose "<intent>"`** calls `POST /v1/compose` through the existing `getClient()` /
+  auth / error plumbing (no new HTTP stack) and prints a markdown rendering of the proposal:
+  stages with their `why` lines, scopes with `mintable` flags, price rows (a `usd` amount only
+  when the row was actually quoted, the literal `quote at call time` otherwise), and the
+  `callShape.http` curl. `--json` prints the raw response object instead. `--flow <id>` sends
+  `flowId` to re-propose a saved flow. `--budget <usd>` sends `budgetUsd`, validated as a
+  non-negative number before any network call. The command never calls a product route; the
+  proposal's own `executes` field is always `false` and is never derived or overridden here.
+  `--save` does not itself call the console flows route (`POST /api/console/flows`): that route
+  is session-cookie only today and there is no CLI/SDK machine-auth token yet, so `--save` prints
+  the exact request a signed-in human can paste into their own console session instead of
+  silently no-oping. Types are a local structural mirror of the gateway's wire contract (not yet
+  exported by `@wave-av/sdk`); `compose` is registered in `capabilities.json`.
+
 ## [1.0.10] - 2026-09-06
 
 ### Fixed
