@@ -232,6 +232,19 @@ jobs:
           fi
           echo "npm view: @wave-av/cli@$EXPECTED confirmed live"
 
+      - name: npm view — published version carries signed provenance (proven-live-or-not-done)
+        env:
+          EXPECTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          ATTESTATION_URL="$(npm view "@wave-av/cli@$EXPECTED" dist.attestations.url --registry=https://registry.npmjs.org 2>/dev/null || true)"
+          echo "attestations.url=$ATTESTATION_URL"
+          if [ -z "$ATTESTATION_URL" ]; then
+            echo "::error::@wave-av/cli@$EXPECTED published without provenance (dist.attestations.url is empty)"
+            exit 1
+          fi
+          echo "npm view: @wave-av/cli@$EXPECTED provenance confirmed"
+
       - name: Fresh install from the real registry (not the packed tarball)
         env:
           EXPECTED: ${{ inputs.version }}
@@ -242,7 +255,15 @@ jobs:
           cd "$RUNNER_TEMP/verify"
           npm init -y >/dev/null
           npm install "@wave-av/cli@$EXPECTED" --registry=https://registry.npmjs.org
-          GOT="$(npx --no wave --version)"
+          # Invoke the INSTALLED bin directly and deterministically. `npx --no ...` is not a
+          # valid invocation (npx has no `--no` flag) -- npx swallowed `--version` as its own
+          # arg and printed the runner's bundled npm version instead of ever running the
+          # published `wave` binary (measured: release run 34010983805, "expected=1.0.10
+          # got=10.9.8"). Resolving `.bin/wave` from the install we just made proves the
+          # PUBLISHED package's bin, not npx's own version-flag handling.
+          WAVE_BIN="$RUNNER_TEMP/verify/node_modules/.bin/wave"
+          test -x "$WAVE_BIN" || { echo "::error::no executable bin linked at $WAVE_BIN"; exit 1; }
+          GOT="$("$WAVE_BIN" --version)"
           echo "expected=$EXPECTED got=$GOT"
           if [ "$GOT" != "$EXPECTED" ]; then
             echo "::error::published package reports version '$GOT', expected '$EXPECTED'"
@@ -261,7 +282,10 @@ jobs:
           # command's own exit code is non-zero when unauthenticated/unreachable (by design --
           # see cli.test.ts), so this step captures output regardless of exit status and parses
           # only the JSON block (from the first '{' onward), not the whole mixed stream.
-          OUT="$(npx --no wave status --output json 2>&1 || true)"
+          # Same fix as the version-parity step above: invoke the installed bin directly,
+          # never a bare `npx` (npx has no `--no` flag and would swallow `status` too).
+          WAVE_BIN="$SMOKE/node_modules/.bin/wave"
+          OUT="$("$WAVE_BIN" status --output json 2>&1 || true)"
           echo "$OUT"
           ENDPOINT="$(echo "$OUT" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const i=d.indexOf('{');try{console.log(JSON.parse(d.slice(i)).apiEndpoint||'')}catch{console.log('')}})")"
           echo "apiEndpoint=$ENDPOINT"
