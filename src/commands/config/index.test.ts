@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getNestedValue, parseConfigPath, setNestedValue } from "./index.js";
+import { getDefaultConfig, waveConfigSchema } from "../../lib/config/schema.js";
 
 /**
  * Security regression test for CodeQL js/prototype-pollution-utility (alert #2).
@@ -50,10 +51,82 @@ describe("setNestedValue prototype pollution", () => {
     expect(Object.prototype).not.toHaveProperty("polluted");
   });
 
+  it("does not pollute via a nested __proto__ segment", () => {
+    const target: Record<string, unknown> = { a: {} };
+
+    expect(() => setNestedValue(target, "a.__proto__.polluted", "yes")).toThrow(
+      /reserved property name/,
+    );
+
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    expect(Object.prototype).not.toHaveProperty("polluted");
+    expect((target["a"] as Record<string, unknown>)["polluted"]).toBeUndefined();
+  });
+
+  it("does not pollute via a nested constructor.prototype segment", () => {
+    const target: Record<string, unknown> = { a: {} };
+
+    expect(() => setNestedValue(target, "a.constructor.prototype.polluted", "yes")).toThrow(
+      /reserved property name/,
+    );
+
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    expect(Object.prototype).not.toHaveProperty("polluted");
+  });
+
+  it("rejects a reserved key in the final (written) segment too", () => {
+    const target: Record<string, unknown> = {};
+
+    for (const forbidden of ["__proto__", "constructor", "prototype"]) {
+      expect(() => setNestedValue(target, `telemetry.${forbidden}`, "yes")).toThrow(
+        /reserved property name/,
+      );
+    }
+
+    expect(Object.prototype).not.toHaveProperty("yes");
+    expect(target).not.toHaveProperty("telemetry.__proto__");
+  });
+
+  it("creates intermediate containers with a null prototype", () => {
+    const target: Record<string, unknown> = {};
+    setNestedValue(target, "telemetry.nested.enabled", "true");
+
+    const telemetry = target["telemetry"] as object;
+    const nested = (telemetry as Record<string, unknown>)["nested"] as object;
+    expect(Object.getPrototypeOf(telemetry)).toBeNull();
+    expect(Object.getPrototypeOf(nested)).toBeNull();
+    // A null-prototype container has nothing to pollute even if a guard were bypassed.
+    expect(getNestedValue(target, "telemetry.nested.enabled")).toBe(true);
+  });
+
   it("still sets ordinary nested values", () => {
     const target: Record<string, unknown> = {};
     setNestedValue(target, "telemetry.enabled", "true");
     expect(target).toEqual({ telemetry: { enabled: true } });
+  });
+
+  it("produces containers the config schema still validates", () => {
+    // `config set` feeds its result straight into waveConfigSchema.parse via saveConfig,
+    // so a null-prototype container must survive zod validation and JSON serialisation.
+    const cfg = { ...getDefaultConfig() } as Record<string, unknown>;
+    setNestedValue(cfg, "projects.acme.organizationId", "org_1");
+    setNestedValue(cfg, "projects.acme.organizationName", "Acme");
+
+    const validated = waveConfigSchema.parse(cfg);
+    expect(validated.projects["acme"]?.organizationId).toBe("org_1");
+    expect(JSON.parse(JSON.stringify(validated))).toMatchObject({
+      projects: { acme: { organizationName: "Acme" } },
+    });
+  });
+
+  it("round-trips through JSON so null-prototype containers stay serialisable", () => {
+    const target: Record<string, unknown> = {};
+    setNestedValue(target, "telemetry.enabled", "true");
+    setNestedValue(target, "api.timeout", "30");
+    expect(JSON.parse(JSON.stringify(target))).toEqual({
+      telemetry: { enabled: true },
+      api: { timeout: 30 },
+    });
   });
 
   it("parses numbers and booleans, leaving other strings alone", () => {
