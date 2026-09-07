@@ -1,6 +1,6 @@
 # @wave-av/cli
 
-Command-line interface for the WAVE streaming platform. Manage streams, productions, and infrastructure from your terminal.
+WAVE is media infrastructure for the agentic internet: one call shape moves live and on-demand media across every transport, and both kinds of user, people and agents, discover it, call it, and pay for it per call. This CLI is the terminal client for that call shape. Manage streams, productions, and infrastructure from your terminal, by hand or from an agent's script.
 
 ## Installation
 
@@ -82,6 +82,7 @@ wave stream list  # Uses env vars automatically
 | `captions`     | Live captions           | `wave captions generate --stream-id <id>`  |
 | `chapters`     | Chapter detection       | `wave chapters detect --recording-id <id>` |
 | `ai`           | AI assistant            | `wave ai assistant start`                  |
+| `compose`      | Composition proposals   | `wave compose "live captions for tomorrow's webinar"` |
 | `transcribe`   | Transcription           | `wave transcribe create --stream-id <id>`  |
 | `sentiment`    | Sentiment analysis      | `wave sentiment analyze --text "..."`      |
 | `search`       | Content search          | `wave search query --q "keyword"`          |
@@ -183,4 +184,5 @@ jobs:
 
 ## License
 
-MIT
+Apache-2.0 — see [LICENSE](LICENSE). The [NOTICE](NOTICE) file reserves the WAVE
+trademarks; the Apache License grants rights to the software only.

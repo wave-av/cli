@@ -1,19 +1,92 @@
 {
-  "schemaVersion": "1",
-  "repo": "wave-av/cli",
-  "version": "0.6.0",
-  "lifecycle": "beta",
-  "planeLayer": null,
-  "foundationPin": "v1",
-  "maintainers": [{ "team": "sdk" }],
-  "exposes": {
-    "cli": [{ "binary": "wave", "subcommands": ["auth", "feed", "clip", "transcribe", "agent"] }]
-  },
-  "consumes": {
-    "waveProducts": [
-      { "repo": "wave-av/api-gateway" }
-    ],
-    "foundationFrameworks": ["frameworks/platform-registry"]
-  },
-  "tags": ["cli", "public", "operator-tooling"]
+ "schemaVersion": "1",
+ "repo": "wave-av/cli",
+ "version": "0.7.0",
+ "lifecycle": "beta",
+ "planeLayer": null,
+ "foundationPin": "v1",
+ "maintainers": [
+  {
+   "team": "sdk"
+  }
+ ],
+ "exposes": {
+  "cli": [
+   {
+    "binary": "wave",
+    "subcommands": [
+     "admin",
+     "ai",
+     "analytics",
+     "api",
+     "audience",
+     "auth",
+     "billing",
+     "captions",
+     "chapters",
+     "clip",
+     "collab",
+     "completion",
+     "compose",
+     "config",
+     "connect",
+     "creator",
+     "desktop",
+     "dev",
+     "distribution",
+     "doctor",
+     "drm",
+     "edge",
+     "editor",
+     "fleet",
+     "ghost",
+     "identity",
+     "init",
+     "link",
+     "listen",
+     "logs",
+     "marketplace",
+     "mesh",
+     "notify",
+     "open",
+     "org",
+     "phone",
+     "podcast",
+     "prism",
+     "qr",
+     "scene",
+     "search",
+     "sentiment",
+     "signage",
+     "slides",
+     "status",
+     "stream",
+     "studio",
+     "transcribe",
+     "trigger",
+     "usb",
+     "vault",
+     "voice",
+     "webhook-subscriptions",
+     "whoami",
+     "zoom"
+    ]
+   }
+  ]
+ },
+ "consumes": {
+  "waveProducts": [
+   {
+    "repo": "wave-av/api-gateway"
+   }
+  ],
+  "foundationFrameworks": [
+   "frameworks/platform-registry"
+  ]
+ },
+ "tags": [
+  "cli",
+  "public",
+  "operator-tooling"
+ ]
 }
