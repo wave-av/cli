@@ -1,0 +1,56 @@
+name: Release drift check
+
+# Jake's decision (2026-09-05): agents build release-on-tag + provenance PRs,
+# and it must ALWAYS be codified workflows so there is never drift between
+# "the code", "the tag", "npm", and "the GitHub Release".
+#
+# This workflow is the drift DETECTOR (release.yml is the drift FIXER — it
+# only runs on a tag push/backfill). It compares, independently:
+#   1. the highest `v*` git tag
+#   2. package.json's version on main
+#   3. npm's published `latest` dist-tag version (public registry)
+#   4. whether a GitHub Release exists for that tag
+#   5. whether the published npm version carries a provenance attestation
+# All the comparison logic lives in scripts/release/check-drift.sh (and its
+# scripts/release/lib.sh helpers) so it is runnable and testable outside CI
+# against the live registry — this workflow is a thin wrapper around it.
+#
+# Exit codes from the script are load-bearing and NEVER papered over:
+#   0 = in sync            -> job succeeds
+#   1 = drift detected      -> job fails loud
+#   2 = could not tell      -> job fails loud (an unreadable registry is
+#                              NEVER treated as "in sync")
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * *'   # daily, off the hour to avoid the GitHub Actions top-of-hour pile-up
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  drift-check:
+    name: Check release drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Run the drift check (fails loud on drift or unreadable state)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: bash scripts/release/check-drift.sh

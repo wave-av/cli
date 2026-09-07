@@ -5,7 +5,49 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+- **`wave compose "<intent>"`** calls `POST /v1/compose` through the existing `getClient()` /
+  auth / error plumbing (no new HTTP stack) and prints a markdown rendering of the proposal:
+  stages with their `why` lines, scopes with `mintable` flags, price rows (a `usd` amount only
+  when the row was actually quoted, the literal `quote at call time` otherwise), and the
+  `callShape.http` curl. `--json` prints the raw response object instead. `--flow <id>` sends
+  `flowId` to re-propose a saved flow. `--budget <usd>` sends `budgetUsd`, validated as a
+  non-negative number before any network call. The command never calls a product route; the
+  proposal's own `executes` field is always `false` and is never derived or overridden here.
+  `--save` does not itself call the console flows route (`POST /api/console/flows`): that route
+  is session-cookie only today and there is no CLI/SDK machine-auth token yet, so `--save` prints
+  the exact request a signed-in human can paste into their own console session instead of
+  silently no-oping. Types are a local structural mirror of the gateway's wire contract (not yet
+  exported by `@wave-av/sdk`); `compose` is registered in `capabilities.json`.
+
+## [1.0.10] - 2026-09-06
+
 ### Fixed
+- **`@wave-av/sdk` bumped from the exact pin `2.0.14` to `2.1.3`.** The `[1.0.9]` entry below
+  pinned to `2.0.14` as a stopgap because `2.1.3` — "the real fix" for the SDK's ESM
+  `module is not defined` bug — was not yet published to npm at the time. It is now published
+  (`npm view @wave-av/sdk versions --registry=https://registry.npmjs.org` includes `2.1.3`),
+  so this follow-up (explicitly promised in the `[1.0.9]` note below) lands: the pin moves to
+  the exact version `2.1.3` (same exact-pin convention as before — a caret range is what
+  resolved to the broken `2.1.x` build in the first place) and `package-lock.json` is
+  regenerated to match. `src/` required no changes: it already type-checks cleanly against
+  the SDK's stable flat-method API surface (`client.audience.createPoll`, etc.) on both
+  `2.0.14` and `2.1.3`.
+- **Release run 34008716210 (`workflow_dispatch -f tag=v1.0.9`) failed `tsc --noEmit` with
+  ~140 TS2339/TS2551 errors** (`StudioAIAPI.start`, `PulseAPI.viewers`,
+  `AudienceAPI.polls`, etc.). Root cause: the `v1.0.9` git tag points at commit `5fe08f40d`,
+  which predates nine `fix(commands): reconcile ... against the real SDK surface` commits
+  that landed on `main` *after* the tag was cut — those commits fixed every one of these
+  command files but nobody bumped `package.json`'s version (it stayed `"1.0.9"` through all
+  of them). `main`'s current tree already type-checks clean (verified locally); the tag's
+  frozen tree does not and cannot be made to, short of moving the tag (not done here — tags
+  are never moved). **`v1.0.9` cannot be successfully backfilled.** This release bumps the
+  version to `1.0.10` specifically so a *new* tag can be cut from this merge commit (or
+  later) and backfilled/published instead — see `.github/workflows/_release-publish.yml`'s
+  `Verify tag matches package.json version` step, which refuses to publish any tag whose
+  name disagrees with `package.json`'s version.
+
 - **The package declared MIT while shipping the Apache-2.0 license text.** `package.json`
   said `"license": "MIT"` and the README's License section said MIT, but `LICENSE` has been
   the Apache-2.0 text since 5da8018 ("chore: adopt Apache-2.0 license + add NOTICE",

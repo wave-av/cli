@@ -1,4 +1,5 @@
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { Wave } from "@wave/sdk";
 
 const wave = new Wave({
@@ -10,8 +11,26 @@ const app = express();
 // WAVE sends JSON payloads for webhook events
 app.use(express.json());
 
+// Rate limit the webhook route.
+//
+// Signature verification is a cryptographic operation, so an unauthenticated caller can burn
+// your CPU just by POSTing garbage bodies at this endpoint — the 401 costs you an HMAC every
+// time. Limiting BEFORE the handler keeps that cheap.
+//
+// Tune `max` to your real event volume: it must sit comfortably above WAVE's burst rate
+// (including delivery retries) or you will drop legitimate events. If you deploy behind a
+// platform that already rate-limits at the edge (Cloudflare, API Gateway, Vercel, an ingress
+// controller), prefer that and remove this middleware rather than limiting twice.
+const webhookLimiter = rateLimit({
+  windowMs: 60_000, // 1 minute
+  max: 300, // per IP, per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests" },
+});
+
 // Verify webhook signatures to ensure requests are from WAVE
-app.post("/webhooks/wave", async (req, res) => {
+app.post("/webhooks/wave", webhookLimiter, async (req, res) => {
   const signature = req.headers["wave-signature"] as string | undefined;
   const secret = process.env.WAVE_WEBHOOK_SECRET;
 

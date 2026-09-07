@@ -52,6 +52,7 @@ import { registerStatusCommands } from "./commands/status/index.js";
 import { registerCompletionCommands } from "./commands/completion/index.js";
 import { registerApiCommands } from "./commands/api/index.js";
 import { registerLinkCommands } from "./commands/link/index.js";
+import { registerComposeCommands } from "./commands/compose/index.js";
 import { detectEnvironment } from "./lib/environment.js";
 import { CLI_VERSION } from "./lib/version.js";
 
@@ -115,6 +116,9 @@ export function createProgram(): Command {
   registerSentimentCommands(program);
   registerSearchCommands(program);
   registerSceneCommands(program);
+
+  // Composer
+  registerComposeCommands(program);
 
   // Enterprise (P2)
   registerFleetCommands(program);
