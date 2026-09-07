@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { oneOf } from "../../lib/options.js";
 
 export function registerTranscribeCommands(program: Command): void {
   const transcribe = program.command("transcribe").description("Transcription services");
@@ -16,7 +17,8 @@ export function registerTranscribeCommands(program: Command): void {
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
         const result = await client.transcribe.create({
-          streamId: opts.streamId,
+          source_type: "stream",
+          source_id: opts.streamId,
           language: opts.language,
         });
         console.log(chalk.green(`Transcription started: ${result.id}`));
@@ -38,13 +40,14 @@ export function registerTranscribeCommands(program: Command): void {
   transcribe
     .command("export <id>")
     .description("Export a transcription")
-    .option("--format <format>", "Export format (srt, vtt, txt, json)", "srt")
+    .option("--format <format>", "Export format (txt, json, srt, vtt, docx, pdf)", "srt")
     .action(
       wrapCommand(async (id: string, opts) => {
         const client = await getClient(program.opts());
-        const result = await client.transcribe.export(id, {
-          format: opts.format,
-        });
+        const result = await client.transcribe.exportTranscription(
+          id,
+          oneOf("--format", opts.format, ["txt", "json", "srt", "vtt", "docx", "pdf"]),
+        );
         console.log(chalk.green(`Transcription exported as ${opts.format}.`));
         formatOutput(result, program.opts());
       }),

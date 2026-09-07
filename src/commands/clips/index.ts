@@ -1,8 +1,10 @@
 import { Command } from "commander";
+import { writeFile } from "node:fs/promises";
 import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { oneOf } from "../../lib/options.js";
 
 export function registerClipCommands(program: Command): void {
   const clip = program.command("clip").description("Manage stream clips");
@@ -13,15 +15,18 @@ export function registerClipCommands(program: Command): void {
     .requiredOption("--stream-id <streamId>", "Source stream ID")
     .requiredOption("--start <start>", "Start time in seconds")
     .requiredOption("--end <end>", "End time in seconds")
-    .option("--title <title>", "Clip title")
+    .requiredOption("--title <title>", "Clip title")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
         const result = await client.clips.create({
-          streamId: opts.streamId,
-          start: parseFloat(opts.start),
-          end: parseFloat(opts.end),
           title: opts.title,
+          source: {
+            type: "stream",
+            id: opts.streamId,
+            start_time: parseFloat(opts.start),
+            end_time: parseFloat(opts.end),
+          },
         });
         console.log(chalk.green(`Clip created: ${result.id}`));
         formatOutput(result, program.opts());
@@ -54,11 +59,13 @@ export function registerClipCommands(program: Command): void {
   clip
     .command("export <id>")
     .description("Export a clip")
-    .option("--format <format>", "Export format (mp4, webm, gif)", "mp4")
+    .option("--format <format>", "Export format (mp4, webm, mov, gif, mp3, wav)", "mp4")
     .action(
       wrapCommand(async (id: string, opts) => {
         const client = await getClient(program.opts());
-        const result = await client.clips.export(id, { format: opts.format });
+        const result = await client.clips.exportClip(id, {
+          format: oneOf("--format", opts.format, ["mp4", "webm", "mov", "gif", "mp3", "wav"]),
+        });
         console.log(chalk.green(`Clip ${id} export started.`));
         formatOutput(result, program.opts());
       }),
@@ -71,8 +78,24 @@ export function registerClipCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string, opts) => {
         const client = await getClient(program.opts());
-        const result = await client.clips.download(id, { output: opts.output });
-        console.log(chalk.green(`Clip ${id} downloaded to ${result.path}`));
+        // The SDK has no download helper; it surfaces a signed URL on the clip and
+        // leaves the transfer to the caller.
+        const clip = await client.clips.get(id);
+        if (!clip.download_url) {
+          throw new Error(
+            `Clip ${id} has no download URL yet (status: ${clip.status}). ` +
+              `Export it first with "wave clip export ${id}".`,
+          );
+        }
+        const response = await fetch(clip.download_url);
+        if (!response.ok) {
+          throw new Error(
+            `Download failed for clip ${id}: ${response.status} ${response.statusText}`,
+          );
+        }
+        const destination = opts.output ?? `${id}.mp4`;
+        await writeFile(destination, Buffer.from(await response.arrayBuffer()));
+        console.log(chalk.green(`Clip ${id} downloaded to ${destination}`));
       }),
     );
 }

@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { oneOf } from "../../lib/options.js";
 import { confirmDestructive } from "../../lib/output/index.js";
 
 export function registerPodcastCommands(program: Command): void {
@@ -13,16 +14,19 @@ export function registerPodcastCommands(program: Command): void {
   episodes
     .command("create")
     .description("Create a podcast episode")
+    .requiredOption("--podcast-id <podcastId>", "Podcast ID")
     .requiredOption("--title <title>", "Episode title")
-    .option("--description <desc>", "Episode description")
-    .option("--audio <path>", "Path to audio file")
+    .requiredOption("--description <desc>", "Episode description")
+    .option("--audio-url <url>", "Publicly reachable URL of the episode audio")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.podcast.episodes.create({
+        // The API ingests audio by URL; it does not accept a local file path.
+        const result = await client.podcast.createEpisode({
+          podcast_id: opts.podcastId,
           title: opts.title,
           description: opts.description,
-          audioPath: opts.audio,
+          audio_url: opts.audioUrl,
         });
         console.log(chalk.green(`Episode created: ${result.id}`));
         formatOutput(result, program.opts());
@@ -32,11 +36,12 @@ export function registerPodcastCommands(program: Command): void {
   episodes
     .command("list")
     .description("List podcast episodes")
+    .requiredOption("--podcast-id <podcastId>", "Podcast ID")
     .option("--limit <n>", "Maximum results", "20")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.podcast.episodes.list({
+        const result = await client.podcast.listEpisodes(opts.podcastId, {
           limit: parseInt(opts.limit),
         });
         formatOutput(result.data, program.opts());
@@ -49,7 +54,7 @@ export function registerPodcastCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.podcast.episodes.get(id);
+        const result = await client.podcast.getEpisode(id);
         formatOutput(result, program.opts());
       }),
     );
@@ -60,7 +65,7 @@ export function registerPodcastCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.podcast.episodes.publish(id);
+        const result = await client.podcast.publishEpisode(id);
         console.log(chalk.green(`Episode ${id} published.`));
         formatOutput(result, program.opts());
       }),
@@ -74,7 +79,7 @@ export function registerPodcastCommands(program: Command): void {
         const confirmed = await confirmDestructive("delete", `episode ${id}`, program.opts());
         if (!confirmed) return;
         const client = await getClient(program.opts());
-        await client.podcast.episodes.delete(id);
+        await client.podcast.removeEpisode(id);
         console.log(chalk.green(`Episode ${id} deleted.`));
       }),
     );
@@ -84,12 +89,13 @@ export function registerPodcastCommands(program: Command): void {
 
   rss
     .command("generate")
-    .description("Generate an RSS feed")
+    .description("Get a podcast's RSS feed")
+    .requiredOption("--podcast-id <podcastId>", "Podcast ID")
     .action(
-      wrapCommand(async () => {
+      wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.podcast.rss.generate();
-        console.log(chalk.green("RSS feed generated."));
+        const result = await client.podcast.getRSSFeed(opts.podcastId);
+        console.log(chalk.green(`RSS feed: ${result.url}`));
         formatOutput(result, program.opts());
       }),
     );
@@ -97,10 +103,11 @@ export function registerPodcastCommands(program: Command): void {
   rss
     .command("get")
     .description("Get the current RSS feed URL")
+    .requiredOption("--podcast-id <podcastId>", "Podcast ID")
     .action(
-      wrapCommand(async () => {
+      wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.podcast.rss.get();
+        const result = await client.podcast.getRSSFeed(opts.podcastId);
         formatOutput(result, program.opts());
       }),
     );
@@ -108,14 +115,22 @@ export function registerPodcastCommands(program: Command): void {
   podcast
     .command("distribute")
     .description("Distribute podcast to platforms")
-    .option("--platforms <platforms>", "Comma-separated platforms (spotify, apple, google)")
+    .requiredOption("--podcast-id <podcastId>", "Podcast ID")
+    .requiredOption(
+      "--platforms <platforms>",
+      "Comma-separated platforms (spotify, apple, google, amazon, overcast)",
+    )
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const platforms = opts.platforms
-          ? (opts.platforms as string).split(",").map((p: string) => p.trim())
-          : undefined;
-        const result = await client.podcast.distribute({ platforms });
+        const platforms = (opts.platforms as string)
+          .split(",")
+          .map((p: string) => p.trim())
+          .filter(Boolean)
+          .map((p: string) =>
+            oneOf("--platforms", p, ["spotify", "apple", "google", "amazon", "overcast"]),
+          );
+        const result = await client.podcast.distribute(opts.podcastId, platforms);
         console.log(chalk.green("Distribution initiated."));
         formatOutput(result, program.opts());
       }),

@@ -15,15 +15,15 @@ export function registerAudienceCommands(program: Command): void {
     .description("Create an audience poll")
     .requiredOption("--question <question>", "Poll question")
     .requiredOption("--options <options>", "Comma-separated poll options")
-    .option("--stream-id <streamId>", "Attach to a stream")
+    .requiredOption("--stream-id <streamId>", "Stream to attach the poll to")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
         const options = (opts.options as string).split(",").map((o: string) => o.trim());
-        const result = await client.audience.polls.create({
+        const result = await client.audience.createPoll({
           question: opts.question,
           options,
-          streamId: opts.streamId,
+          stream_id: opts.streamId,
         });
         console.log(chalk.green(`Poll created: ${result.id}`));
         formatOutput(result, program.opts());
@@ -35,12 +35,13 @@ export function registerAudienceCommands(program: Command): void {
     .description("List polls")
     .option("--stream-id <streamId>", "Filter by stream ID")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.audience.polls.list({
-          streamId: opts.streamId,
-        });
-        formatOutput(result.data, program.opts());
+      wrapCommand(async () => {
+        // The SDK's AudienceAPI has no poll-listing route (only createPoll,
+        // getPoll, closePoll, getPollResults, vote) — there is no server-side
+        // "list" to call. Fail loudly rather than fake a result.
+        throw new Error(
+          "Listing polls is not supported by the current SDK. Use `wave audience polls results <id>` for a specific poll.",
+        );
       }),
     );
 
@@ -50,7 +51,7 @@ export function registerAudienceCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.audience.polls.results(id);
+        const result = await client.audience.getPollResults(id);
         formatOutput(result, program.opts());
       }),
     );
@@ -61,7 +62,7 @@ export function registerAudienceCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.audience.polls.close(id);
+        const result = await client.audience.closePoll(id);
         console.log(chalk.green(`Poll ${id} closed.`));
         formatOutput(result, program.opts());
       }),
@@ -73,13 +74,13 @@ export function registerAudienceCommands(program: Command): void {
   questions
     .command("create")
     .description("Open a Q&A session")
-    .option("--stream-id <streamId>", "Attach to a stream")
+    .requiredOption("--stream-id <streamId>", "Stream to attach the Q&A session to")
     .option("--moderated", "Enable moderation", false)
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.audience.questions.create({
-          streamId: opts.streamId,
+        const result = await client.audience.createQA({
+          stream_id: opts.streamId,
           moderated: opts.moderated,
         });
         console.log(chalk.green(`Q&A session created: ${result.id}`));
@@ -94,10 +95,9 @@ export function registerAudienceCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.audience.questions.list({
-          sessionId: opts.sessionId,
-        });
-        formatOutput(result.data, program.opts());
+        // The SDK exposes questions as part of the Q&A session, not a separate list route.
+        const session = await client.audience.getQA(opts.sessionId);
+        formatOutput(session.questions, program.opts());
       }),
     );
 
@@ -109,13 +109,13 @@ export function registerAudienceCommands(program: Command): void {
     .description("Enable reactions for a stream")
     .requiredOption("--stream-id <streamId>", "Stream ID")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.audience.reactions.enable({
-          streamId: opts.streamId,
-        });
-        console.log(chalk.green("Reactions enabled."));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        // The SDK's AudienceAPI has no enable/disable toggle for reactions —
+        // only sendReaction (fire one burst) and getReactionMetrics exist.
+        // There is nothing to call here; fail loudly rather than pretend.
+        throw new Error(
+          "Enabling/disabling reactions is not supported by the current SDK. Reactions are fired per-event via sendReaction.",
+        );
       }),
     );
 
@@ -124,13 +124,10 @@ export function registerAudienceCommands(program: Command): void {
     .description("Disable reactions for a stream")
     .requiredOption("--stream-id <streamId>", "Stream ID")
     .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.audience.reactions.disable({
-          streamId: opts.streamId,
-        });
-        console.log(chalk.green("Reactions disabled."));
-        formatOutput(result, program.opts());
+      wrapCommand(async () => {
+        throw new Error(
+          "Enabling/disabling reactions is not supported by the current SDK. Reactions are fired per-event via sendReaction.",
+        );
       }),
     );
 }

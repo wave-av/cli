@@ -27,6 +27,7 @@ import { registerZoomCommands } from "./commands/zoom/index.js";
 import { registerVaultCommands } from "./commands/vault/index.js";
 import { registerMarketplaceCommands } from "./commands/marketplace/index.js";
 import { registerConnectCommands } from "./commands/connect/index.js";
+import { registerWebhookSubscriptionCommands, registerIdentityCommands } from "./commands/webhook-subscriptions/index.js";
 import { registerDistributionCommands } from "./commands/distribution/index.js";
 import { registerDesktopCommands } from "./commands/desktop/index.js";
 import { registerSignageCommands } from "./commands/signage/index.js";
@@ -51,7 +52,9 @@ import { registerStatusCommands } from "./commands/status/index.js";
 import { registerCompletionCommands } from "./commands/completion/index.js";
 import { registerApiCommands } from "./commands/api/index.js";
 import { registerLinkCommands } from "./commands/link/index.js";
+import { registerComposeCommands } from "./commands/compose/index.js";
 import { detectEnvironment } from "./lib/environment.js";
+import { CLI_VERSION } from "./lib/version.js";
 
 function printBanner(): void {
   // WAVE brand gradient: blue (#3366FF) -> purple (#7B41E8) -> cyan (#33BBCC)
@@ -68,7 +71,7 @@ function printBanner(): void {
   console.log(`  ${b("╚███╔███╔╝")} ${p("██║  ██║")} ${p(" ╚████╔╝ ")} ${c("███████╗")}`);
   console.log(`  ${b(" ╚══╝╚══╝ ")} ${p("╚═╝  ╚═╝")} ${p("  ╚═══╝  ")} ${c("╚══════╝")}`);
   console.log("");
-  console.log(`  ${d("Enterprise Streaming Platform")}  ${chalk.hex("#555")("v1.0.0")}`);
+  console.log(`  ${d("Enterprise Streaming Platform")}  ${chalk.hex("#555")(`v${CLI_VERSION}`)}`);
   console.log(`  ${d("─".repeat(45))}`);
   console.log("");
 }
@@ -79,7 +82,7 @@ export function createProgram(): Command {
   program
     .name("wave")
     .description("WAVE CLI - Command-line interface for the WAVE streaming platform")
-    .version("1.0.0", "-v, --version")
+    .version(CLI_VERSION, "-v, --version")
     .option("-o, --output <format>", "Output format: table, json, yaml", "table")
     .option("--project <name>", "Override project context")
     .option("--org <id>", "Override organization")
@@ -114,6 +117,9 @@ export function createProgram(): Command {
   registerSearchCommands(program);
   registerSceneCommands(program);
 
+  // Composer
+  registerComposeCommands(program);
+
   // Enterprise (P2)
   registerFleetCommands(program);
   registerGhostCommands(program);
@@ -127,6 +133,8 @@ export function createProgram(): Command {
   registerVaultCommands(program);
   registerMarketplaceCommands(program);
   registerConnectCommands(program);
+  registerWebhookSubscriptionCommands(program);
+  registerIdentityCommands(program);
   registerDistributionCommands(program);
   registerDesktopCommands(program);
   registerSignageCommands(program);

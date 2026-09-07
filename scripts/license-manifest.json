@@ -1,0 +1,25 @@
+{
+  "$comment": "Every WAVE package published to a public registry, and the repo that is its source of truth. The ledger walks this list; adding a package here is how it gets audited.",
+  "intendedLicense": "Apache-2.0",
+  "governingStatement": {
+    "repo": "wave-av/cli",
+    "commit": "5da80189e5b154c79de8bd294bcf830e630e848b",
+    "subject": "chore: adopt Apache-2.0 license + add NOTICE",
+    "body": "Standardize the open WAVE protocol/SDK surface on Apache-2.0 (patent grant for adoption). Replaces any prior license; adds NOTICE reserving the WAVE marks."
+  },
+  "npm": [
+    { "name": "@wave-av/cli", "source": "wave-av/cli:package.json" },
+    { "name": "@wave-av/sdk", "source": "wave-av/sdk:package.json" },
+    { "name": "@wave-av/adk", "source": "wave-av/adk:package.json" },
+    { "name": "@wave-av/mcp-server", "source": "wave-av/mcp-server:package.json" },
+    {
+      "name": "@wave-av/workflow-sdk",
+      "source": "wave-av/sdks:sdk-typescript/packages/workflow-sdk/package.json"
+    },
+    { "name": "@wave-av/create-app", "source": "UNVERIFIED — no package.json found on any wave-av default branch" }
+  ],
+  "pypi": [
+    { "name": "wave-sdk", "source": "wave-av/sdk-python:pyproject.toml" },
+    { "name": "wave-av-sdk", "source": "wave-av/sdks:sdk-python/pyproject.toml" }
+  ]
+}

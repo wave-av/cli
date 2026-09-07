@@ -5,6 +5,7 @@ import { getApiKey } from "../../lib/auth/keychain.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
 import { detectEnvironment } from "../../lib/environment.js";
+import { maskSecret } from "../../lib/mask.js";
 
 interface CheckResult {
   name: string;
@@ -56,13 +57,15 @@ export function registerDoctorCommands(program: Command): void {
           checks.push({
             name: "Auth",
             status: "pass",
-            message: `WAVE_API_KEY env var set (${envKey.slice(0, 12)}...)`,
+            // Masked, never a prefix: doctor output gets pasted into bug reports, and the
+            // leading characters of a key carry its type/environment. See lib/mask.ts.
+            message: `WAVE_API_KEY env var set (${maskSecret(envKey)})`,
           });
         } else if (apiKey) {
           checks.push({
             name: "Auth",
             status: "pass",
-            message: `API key stored for "${config.currentProject}" (${apiKey.slice(0, 12)}...)`,
+            message: `API key stored for "${config.currentProject}" (${maskSecret(apiKey)})`,
           });
         } else {
           checks.push({
@@ -137,6 +140,13 @@ export function registerDoctorCommands(program: Command): void {
             );
           }
           console.log("");
+        }
+
+        // Non-interactive/CI/agent callers need a real exit code, not just colored text: a
+        // failing check must fail the process. `process.exitCode` (not `process.exit()`) lets
+        // any pending stdout writes flush before Node exits.
+        if (checks.some((c) => c.status === "fail")) {
+          process.exitCode = 1;
         }
       }),
     );

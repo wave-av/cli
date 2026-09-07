@@ -15,7 +15,8 @@ export function registerSceneCommands(program: Command): void {
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
         const result = await client.scene.detect({
-          recordingId: opts.recordingId,
+          media_id: opts.recordingId,
+          media_type: "recording",
         });
         console.log(chalk.green("Scene detection started."));
         formatOutput(result, program.opts());
@@ -24,13 +25,13 @@ export function registerSceneCommands(program: Command): void {
 
   scene
     .command("list")
-    .description("List detected scenes")
+    .description("List scene detections for a recording")
     .requiredOption("--recording-id <recordingId>", "Recording ID")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.scene.list({
-          recordingId: opts.recordingId,
+        const result = await client.scene.listDetections({
+          media_id: opts.recordingId,
         });
         formatOutput(result.data, program.opts());
       }),
@@ -38,13 +39,18 @@ export function registerSceneCommands(program: Command): void {
 
   scene
     .command("compare")
-    .description("Compare scenes across recordings")
-    .requiredOption("--recording-ids <ids>", "Comma-separated recording IDs")
+    .description("Compare the scenes of two detections")
+    .requiredOption("--source-detection-id <id>", "Source scene-detection ID")
+    .requiredOption("--target-detection-id <id>", "Target scene-detection ID")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const recordingIds = (opts.recordingIds as string).split(",");
-        const result = await client.scene.compare({ recordingIds });
+        // Comparison is pairwise across two DETECTIONS, not an N-way compare
+        // across recording IDs.
+        const result = await client.scene.compareScenes(
+          opts.sourceDetectionId,
+          opts.targetDetectionId,
+        );
         formatOutput(result, program.opts());
       }),
     );
