@@ -1,0 +1,26 @@
+src/commands/config/index.test.ts
+  s_efe86faf2558e9::t_82725c873a81ee 54-101,108-129
+  s_efe86faf2558e9::t_9ea51637083c82 130-131
+  s_efe86faf2558e9::t_cbc990cd1f243f 3
+src/commands/config/index.ts
+  s_efe86faf2558e9::t_8a89c2510a6901 97
+  s_efe86faf2558e9::t_41c30d5c6fe9f6 117-140,146-148,152,157-159
+  s_efe86faf2558e9::t_ff1be8b7a08418 73-77
+  s_efe86faf2558e9::t_5617e42157fbf5 78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "e9ead38a8bbcca9a0cdb75c0164b6374e9044d90",
+  "prompts": {},
+  "sessions": {
+    "s_efe86faf2558e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b6e2e9-ab55-4d57-9d9f-d57a588ae688",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
