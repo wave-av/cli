@@ -15,6 +15,7 @@ export const EXIT_CODES = {
   NETWORK_ERROR: 8,
   CONFIG_ERROR: 9,
   TIMEOUT: 10,
+  NOT_IMPLEMENTED: 11,
 } as const;
 
 export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];

@@ -8,8 +8,34 @@ import {
   toStructuredError,
 } from "./suggestions.js";
 
+/**
+ * A command whose SDK call is real and correctly typed, but whose gateway route has no live backend
+ * behind it TODAY — verified, not assumed (a specific such gap: `wave creator revenue`/`payouts`/
+ * `analytics`, see src/commands/creator/index.ts). Distinct from `WaveError`: this never reaches the
+ * network, so there is no status code, request ID, or upstream body — the whole point is to fail
+ * BEFORE inviting a payment (or any other response) for a capability that does not exist yet.
+ */
+export class CapabilityUnavailableError extends Error {
+  public readonly capability: string;
+
+  constructor(message: string, capability: string) {
+    super(message);
+    this.name = "CapabilityUnavailableError";
+    this.capability = capability;
+  }
+}
+
 export function formatCLIError(error: unknown): { message: string; exitCode: number } {
   const env = detectEnvironment();
+
+  if (error instanceof CapabilityUnavailableError) {
+    const exitCode = EXIT_CODES.NOT_IMPLEMENTED;
+    if (env.preferJson) {
+      const structured = toStructuredError("CAPABILITY_UNAVAILABLE", error.message, exitCode, []);
+      return { message: JSON.stringify(structured, null, 2), exitCode };
+    }
+    return { message: chalk.yellow(error.message), exitCode };
+  }
 
   if (error instanceof RateLimitError) {
     if (env.preferJson) {

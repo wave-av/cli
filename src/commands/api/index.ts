@@ -4,6 +4,7 @@ import { wrapCommand } from "../../lib/errors.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { getApiKey } from "../../lib/auth/keychain.js";
 import { loadConfig } from "../../lib/config/manager.js";
+import { cliUserAgent } from "../../lib/version.js";
 
 export function registerApiCommands(program: Command): void {
   program
@@ -31,7 +32,7 @@ export function registerApiCommands(program: Command): void {
         const headers: Record<string, string> = {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "User-Agent": "wave-cli/1.0.0",
+          "User-Agent": cliUserAgent(),
         };
 
         // Add custom headers

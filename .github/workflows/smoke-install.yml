@@ -1,0 +1,210 @@
+name: smoke-install
+
+# Regression guard for the 2026-09-01 P0: `npm i @wave-av/cli` resolved a broken
+# `@wave-av/sdk` release (2.1.2) through the `^2.0.11` semver range and every invocation
+# died before argv parsing with a module-resolution error. That class of bug — a real,
+# already-published dependency drifting a fresh install into a broken combination — only
+# shows up when you install the ACTUAL published tarball against the ACTUAL registry, so
+# the `smoke` job below builds the package, packs it, and installs the tarball into a
+# throwaway project exactly the way a real user's `npm install` would. Unit tests and
+# type-check alone cannot catch THAT specific class (a tarball/registry resolution break
+# only shows up against the real, packed artifact) — that is why `smoke` exists as a
+# separate job.
+#
+# CLI-4267 (2026-09-05): `type-check` used to run NOWHERE on this path. It was declared
+# in package.json (`tsc --noEmit`) but the only workflow that ever invoked it was
+# `release.yml`, gated on `push: tags: v*` — i.e. strictly AFTER a release was already
+# cut. `npm run build` uses `tsup` (esbuild), which strips types and never checks them,
+# so `build` + `test` going green here proved nothing about type correctness. Tag
+# `v1.0.9` fired release.yml and failed at the `Type-check` step with 142 real TS2339/
+# TS2353/TS2551/TS2554/TS2561/TS2345 errors on a commit every PR and push-to-main gate
+# had already called green. The `unit` job below now runs `type-check` on every PR and
+# every push to `main`, so that class of false-green can no longer reach a tag.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # VER-001 gate. Until now `npm test` ran ONLY in release.yml, which is `on: push: tags: v*` —
+  # so the version regression tests in src/cli.test.ts never gated a pull request, and a version
+  # drift could only be discovered after a tag was already cut. This job runs them on every PR.
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # --include=dev explicitly: devDependencies carry typescript, vitest and tsup —
+      # every step below needs them, and a runner with a production-leaning npm config
+      # (e.g. NODE_ENV=production, or a global `omit=dev`) would otherwise silently skip
+      # them, which is exactly the class of "looked installed, wasn't" failure that made
+      # this gate measure the wrong thing in the first place (see CLI-4267 note above).
+      - name: Install dependencies
+        run: npm ci --prefer-offline --include=dev
+
+      # CLI-4267: this is the step that did not exist anywhere on the pull_request /
+      # push:main path before this PR. It must be able to go red — no `continue-on-error`,
+      # no `if:` that could skip it, no widening of a type to make it pass. A `tsc --noEmit`
+      # failure exits non-zero, which fails this step, which fails this job, which reports
+      # GitHub conclusion `failure` on the check — never `success`, `neutral`, or `skipped`.
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests (includes the VER-001 version-truth gate)
+        run: npm test
+
+  smoke:
+    runs-on: ubuntu-latest
+    # DERIVED 2026-09-04, three measurement rounds, see PR description for run IDs:
+    # (1) BEFORE: the original `timeout-minutes: 10` with no cache and a
+    #     `registry-url` line was hit exactly 5 of 42 smoke matrix-leg runs
+    #     (job duration 10m02s-10m16s, GH-reported as conclusion=cancelled with
+    #     "exceeded the maximum execution time of 10m0s" - not a concurrency
+    #     cancel, which finishes in seconds) across the last 21 workflow runs.
+    # (2) Adding `cache: npm` + `--prefer-offline` alone did NOT fix it: 8
+    #     consecutive dispatched runs afterward were all green but still
+    #     ranged 5m16s-14m19s per leg - close enough to a 15-min raised
+    #     timeout to still be a real risk.
+    # (3) ROOT CAUSE, isolated by comparing against the `unit` job (identical
+    #     `npm ci`, identical lockfile, identical node 22): this job's
+    #     `registry-url: https://registry.npmjs.org` line (now removed) made
+    #     actions/setup-node write an authenticated npm config with a
+    #     placeholder NODE_AUTH_TOKEN, even though this job never publishes -
+    #     it only ever reads public packages, and npm's default registry is
+    #     already registry.npmjs.org with zero config. `unit` (no
+    #     registry-url) consistently took 11s-26s, cold, no cache. Removing
+    #     registry-url here and re-running 8 more consecutive dispatches:
+    #     every leg completed in 16s-30s - a ~20-30x improvement, all green.
+    # timeout-minutes is left at 15, not reverted to the original 10, purely
+    # as headroom for a genuinely degraded runner or registry outage; actual
+    # runs should land in the tens-of-seconds range per (3) above.
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # --include=dev explicitly, same reasoning as the `unit` job above: `npm run build`
+      # below needs tsup (a devDependency), and a runner with a production-leaning npm
+      # config (NODE_ENV=production or global omit=dev) would otherwise silently skip it,
+      # failing this Build step for a reason unrelated to the tarball/registry install this
+      # job actually exists to test.
+      - name: Install dependencies
+        run: npm ci --prefer-offline --include=dev
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack tarball
+        run: npm pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Fresh install from the packed tarball (real registry, real deps)
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          cd "$RUNNER_TEMP/smoke"
+          npm init -y >/dev/null
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name 'wave-av-cli-*.tgz' -print -quit)
+          npm i "$tarball" --prefer-offline
+
+      - name: wave --version / --help (module-resolution + VER-001 version-truth smoke)
+        run: |
+          cd "$RUNNER_TEMP/smoke"
+
+          # VER-001: this step used to run `wave --version` and DISCARD the output, so the
+          # installed tarball could print any version at all and still pass. Published 1.0.8
+          # printed "1.0.0" exactly like this and shipped. Compare against package.json — this
+          # is the end-to-end half of the gate (the unit job covers the source half), and it
+          # runs against the real packed tarball as a real user's install would see it.
+          EXPECTED=$(node -p "require('$GITHUB_WORKSPACE/package.json').version")
+          ACTUAL=$(npx --yes wave --version | tr -d '[:space:]')
+
+          echo "package.json=$EXPECTED  wave --version=$ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::VER-001: installed CLI reports '$ACTUAL' but package.json says '$EXPECTED'"
+            exit 1
+          fi
+
+          # The banner is a second, independent rendering of the version — it disagreed with
+          # --version in the shipped 1.0.8 bundle. Assert it carries the same version. The CLI
+          # deliberately suppresses the banner under CI/agent env vars, so clear every variable
+          # detectEnvironment() keys on (src/lib/environment.ts) — otherwise this check would
+          # silently assert against a banner that was never printed, and pass for the wrong
+          # reason. Comparing the extracted BANNER for EQUALITY (rather than grepping for a
+          # substring) is what makes a missing banner a failure instead of a quiet pass.
+          HELP=$(
+            unset CI GITHUB_ACTIONS VERCEL BUILDKITE GITLAB_CI CIRCLECI \
+                  WAVE_AGENT CLAUDE_CODE CURSOR_SESSION AIDER_SESSION CONTINUE_SESSION
+            npx --yes wave --help 2>&1
+          )
+          BANNER=$(printf '%s' "$HELP" | sed 's/\x1b\[[0-9;]*m//g' | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*' | head -n1)
+          if [ "$BANNER" != "v$EXPECTED" ]; then
+            echo "::error::VER-001: help banner reported '${BANNER:-<no version in banner>}', expected 'v$EXPECTED'"
+            printf '%s\n' "$HELP" | head -n 20
+            exit 1
+          fi
+          echo "VER-001: package.json == --version == banner == $EXPECTED"
+
+      - name: wave status / wave doctor (live gateway reachability)
+        working-directory: ${{ runner.temp }}/smoke
+        env:
+          WAVE_GATEWAY_API_KEY: ${{ secrets.WAVE_GATEWAY_API_KEY }}
+        run: |
+          if [ -z "$WAVE_GATEWAY_API_KEY" ]; then
+            echo "skipped: WAVE_GATEWAY_API_KEY absent (fork or unset)"
+            exit 0
+          fi
+          export WAVE_API_KEY="$WAVE_GATEWAY_API_KEY"
+
+          # Pass criteria: the process ran and produced a normal CLI response - a clean
+          # exit, or a real HTTP-level auth/scope response (401/402/403 SCOPE_INSUFFICIENT),
+          # or the command's own "not authenticated" business-logic exit. Fail criteria: the
+          # output looks like the install-time crash class this workflow exists to catch -
+          # a module-resolution / ESM-vs-CJS error that means the package never even started.
+          run_check() {
+            label="$1"
+            shift
+            set +e
+            out=$("$@" 2>&1)
+            code=$?
+            set -e
+            echo "$label exit=$code"
+            echo "$out" | head -n 20
+            if echo "$out" | grep -qE 'is not defined in ES module scope|Cannot find module|ERR_MODULE_NOT_FOUND|ERR_REQUIRE_ESM|ReferenceError|SyntaxError: Unexpected token|Cannot find package'; then
+              echo "::error::$label failed with a module-resolution class error"
+              return 1
+            fi
+            echo "$label: process started and produced a normal CLI response - pass"
+            return 0
+          }
+
+          run_check "wave doctor" npx --yes wave doctor
+          run_check "wave status" npx --yes wave status

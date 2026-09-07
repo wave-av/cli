@@ -18,8 +18,8 @@ export function registerMarketplaceCommands(program: Command): void {
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.marketplace.search({
-          q: opts.q,
+        // search takes the query as a positional argument, filters as options.
+        const result = await client.marketplace.search(opts.q, {
           category: opts.category,
           limit: parseInt(opts.limit),
         });
@@ -42,11 +42,24 @@ export function registerMarketplaceCommands(program: Command): void {
   marketplace
     .command("publish")
     .description("Publish an extension to the marketplace")
-    .option("--path <path>", "Path to extension package", ".")
+    .requiredOption("--name <name>", "Extension name")
+    .requiredOption("--description <description>", "Extension description")
+    .requiredOption("--type <type>", "Item type")
+    .requiredOption("--category <category>", "Marketplace category")
+    .requiredOption("--file-url <url>", "URL of the published package artifact")
+    .option("--price-cents <cents>", "Price in cents")
     .action(
       wrapCommand(async (opts) => {
         const client = await getClient(program.opts());
-        const result = await client.marketplace.publish({ path: opts.path });
+        // The API publishes from an uploaded artifact URL, not from a local path.
+        const result = await client.marketplace.publish({
+          name: opts.name,
+          description: opts.description,
+          type: opts.type,
+          category: opts.category,
+          file_url: opts.fileUrl,
+          price_cents: opts.priceCents ? parseInt(opts.priceCents) : undefined,
+        });
         console.log(chalk.green("Extension published successfully."));
         formatOutput(result, program.opts());
       }),
@@ -58,7 +71,8 @@ export function registerMarketplaceCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const client = await getClient(program.opts());
-        const result = await client.marketplace.list();
+        // listInstalled, not list: list() enumerates the whole marketplace.
+        const result = await client.marketplace.listInstalled();
         formatOutput(result.data, program.opts());
       }),
     );

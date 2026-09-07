@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { oneOf } from "../../lib/options.js";
 
 export function registerFleetCommands(program: Command): void {
   const fleet = program.command("fleet").description("Device fleet management");
@@ -38,15 +39,24 @@ export function registerFleetCommands(program: Command): void {
   fleet
     .command("command <id>")
     .description("Send a command to a device")
-    .requiredOption("--action <action>", "Command action (reboot, update, configure)")
+    .requiredOption(
+      "--action <action>",
+      "Command action (restart, update, shutdown, scan_devices, clear_cache)",
+    )
     .option("--payload <json>", "JSON payload for the command")
     .action(
       wrapCommand(async (id: string, opts) => {
         const client = await getClient(program.opts());
         const payload = opts.payload ? JSON.parse(opts.payload as string) : undefined;
-        const result = await client.fleet.command(id, {
-          action: opts.action,
-          payload,
+        const result = await client.fleet.sendCommand(id, {
+          type: oneOf("--action", opts.action, [
+            "restart",
+            "update",
+            "shutdown",
+            "scan_devices",
+            "clear_cache",
+          ]),
+          params: payload,
         });
         console.log(chalk.green(`Command sent to device ${id}.`));
         formatOutput(result, program.opts());
@@ -59,7 +69,7 @@ export function registerFleetCommands(program: Command): void {
     .action(
       wrapCommand(async (id: string) => {
         const client = await getClient(program.opts());
-        const result = await client.fleet.health(id);
+        const result = await client.fleet.getHealth(id);
         formatOutput(result, program.opts());
       }),
     );

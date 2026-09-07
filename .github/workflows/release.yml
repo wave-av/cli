@@ -1,0 +1,112 @@
+name: Release (public npm)
+
+# Gated public-release path for @wave-av/cli. Orchestrator only — the actual
+# gates live in three reusable workflows (split out under this repo's
+# file-size gate once resolve/backfill/release-creation logic pushed a single
+# release.yml past the token budget):
+#   _release-verify.yml          Gate 1 (secret-scan) + Gate 2 (build/e2e-smoke)
+#   _release-publish.yml         Gate 3 (npm OIDC publish, idempotent) + live-registry verify
+#   _release-github-release.yml  Gate 4 (GitHub Release + tarball asset, idempotent)
+#
+# Triggers:
+#   - push:             a `v*` git tag (e.g. `v1.0.9`) — the normal path.
+#   - workflow_dispatch: `-f tag=v1.0.9` — BACKFILLS an existing tag whose
+#     push-triggered run never completed a release (this is how v1.0.9 itself
+#     is backfilled: the tag already exists, points at 5fe08f40d, and
+#     package.json at that commit already says 1.0.9 — it just never had a
+#     GitHub Release or a successful publish run).
+#
+# Nothing reaches public npm or gets a GitHub Release until every prior gate
+# is green. Both publish and the GitHub Release step are idempotent: running
+# this again for a tag that already published/released is a no-op with a
+# clear log line, not a failure — that's what makes the backfill path safe to
+# re-run.
+#
+# Auth: npm OIDC trusted publishing (id-token: write on the publish job only)
+# is the intended path — the Trusted Publisher for @wave-av/cli (org: wave-av,
+# repo: cli, workflow: release.yml) must be registered on npmjs.com. Per
+# decision IGV-D-010 (no per-repo publish secrets), no NPM_TOKEN is configured
+# on this repo — see _release-publish.yml for the (dormant, OIDC-preferred)
+# fallback path it still carries forward from the pre-existing workflow.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to backfill (e.g. v1.0.9) — the tag must already exist'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Resolve which tag this run releases. Push reads it from the ref;
+  # workflow_dispatch reads it from the `tag` input. Delegates to
+  # scripts/release/resolve-tag.sh so the same logic is testable outside CI.
+  # Full history + all tags (fetch-depth: 0) -- needed so resolve-tag.sh's
+  # `git rev-parse`/`git merge-base` can see the tag and origin/main. No `ref:`
+  # override: this checks out whatever triggered the run (the pushed tag, or
+  # the branch a dispatch was run from) -- never the untrusted dispatch input
+  # -- and this job only reads metadata (no build/execution of the tag's
+  # tree), so it is not itself a "poisonable step".
+  resolve:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      sha: ${{ steps.tag.outputs.sha }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and validate tag from trigger (format, existence, trust)
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          DISPATCH_TAG: ${{ github.event.inputs.tag }}
+        run: scripts/release/resolve-tag.sh | tee -a "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify (secret-scan + build/e2e-smoke)
+    needs: [resolve]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_release-verify.yml
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}
+      sha: ${{ needs.resolve.outputs.sha }}
+
+  publish:
+    name: Publish (npm OIDC + live-registry verify)
+    needs: [resolve, verify]
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/_release-publish.yml
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}
+      sha: ${{ needs.resolve.outputs.sha }}
+      version: ${{ needs.resolve.outputs.version }}
+
+  release:
+    name: GitHub Release (idempotent)
+    needs: [resolve, publish]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/_release-github-release.yml
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}
+      sha: ${{ needs.resolve.outputs.sha }}
