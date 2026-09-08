@@ -11,10 +11,11 @@
 # `@wave-av:registry` points at a private registry would otherwise silently test a DIFFERENT
 # artifact than the one a real `npm install @wave-av/cli` resolves for a customer.
 #
+# Also verifies (check 3) that the GitHub Release for npm's resolved `latest` version actually
+# carries an SBOM asset (*.spdx.json / *.cdx.json / *bom.json) — see _release-sbom.yml (Gate 5
+# of release.yml), which is what attaches it.
+#
 # WHAT THIS DOES NOT VERIFY (by design, and said so explicitly in the emitted evidence):
-#   - SBOM attachment (SPDX/CycloneDX) — no SBOM-generating step exists in this repo's CI as of
-#     writing; if one is added, extend `sbom-attached` below to check its output instead of
-#     hardcoding UNKNOWN.
 #   - critical known-vulnerability resolution / risk-acceptance.
 #   - publisher-account MFA / branch-protection posture (an org-settings fact, not a repo fact).
 # A `pass` result from this script therefore NEVER means "SUPPLY-001 fully satisfied" — see
@@ -161,17 +162,34 @@ case "$AUDIT_VERDICT" in
     ;;
 esac
 
-# --- checks 3 & 4: clauses this script does NOT machine-verify ------------------------------
-# Always reported explicitly, never silently omitted and never claimed as a pass.
-# Excludes ga-evidence.yml itself: that workflow's own comments discuss the SBOM clause it does
-# NOT verify, which would otherwise self-match and misreport this very workflow as a "candidate"
-# SBOM generator.
-SBOM_WORKFLOW_HIT="$(grep -ril -E 'sbom|cyclonedx|syft|spdx' "${REPO_ROOT}/.github" \
-  --exclude='ga-evidence.yml' 2>/dev/null | head -1)"
-if [ -n "$SBOM_WORKFLOW_HIT" ]; then
-  emit "UNKNOWN sbom-attached: found a candidate SBOM-related workflow (${SBOM_WORKFLOW_HIT#"$REPO_ROOT"/}) but this script does not yet parse its output — extend check-SUPPLY-001.sh before trusting this clause"
+# --- check 3: SBOM asset attached to the GitHub Release for the resolved `latest` version ---
+# _release-sbom.yml (Gate 5 of release.yml) attaches an SPDX asset to the GitHub Release for
+# every tag it runs on. Verify that against the ACTUAL release for the version this script just
+# resolved from the public registry — not just "a workflow file mentioning sbom exists" (that
+# was this check's placeholder behavior before _release-sbom.yml existed; extending it here is
+# exactly what that placeholder's own comment asked for).
+if ! command -v gh >/dev/null 2>&1; then
+  emit "UNKNOWN sbom-attached: gh CLI not found on PATH — SBOM attachment is not verified by this producer"
 else
-  emit "UNKNOWN sbom-attached: no SBOM-generating workflow exists in this repository's .github/ — SBOM attachment is not verified by this producer"
+  REPO_SLUG="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
+  if [ -z "$REPO_SLUG" ]; then
+    emit "UNKNOWN sbom-attached: could not resolve this repository's GitHub slug (gh repo view failed) — SBOM attachment is not verified by this producer"
+  else
+    RELEASE_TAG="v${RESOLVED_VERSION}"
+    ASSET_NAMES="$(gh release view "$RELEASE_TAG" --repo "$REPO_SLUG" --json assets -q '.assets[].name' 2>/dev/null || true)"
+    if [ -z "$ASSET_NAMES" ]; then
+      emit "UNKNOWN sbom-attached: no GitHub Release found for tag ${RELEASE_TAG} on ${REPO_SLUG} (or it has no assets) — cannot verify SBOM attachment"
+    else
+      SBOM_ASSET="$(printf '%s\n' "$ASSET_NAMES" | grep -E '\.spdx\.json$|\.cdx\.json$|bom\.json$' | head -1 || true)"
+      if [ -n "$SBOM_ASSET" ]; then
+        emit "PASS sbom-attached: release ${RELEASE_TAG} on ${REPO_SLUG} carries an SBOM asset (${SBOM_ASSET})"
+      else
+        FLAT_ASSETS="$(printf '%s' "$ASSET_NAMES" | tr '\n' ',' | sed 's/,$//')"
+        emit "FAIL sbom-attached: release ${RELEASE_TAG} on ${REPO_SLUG} exists but has NO SBOM asset (assets: ${FLAT_ASSETS})"
+        note_fail
+      fi
+    fi
+  fi
 fi
 emit "UNKNOWN critical-vuln-resolution: this producer does not run a vulnerability scan or check risk-acceptance records — critical-vuln resolution is not verified"
 
