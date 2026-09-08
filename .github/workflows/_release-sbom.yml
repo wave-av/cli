@@ -2,9 +2,10 @@ name: (reusable) Release — generate + attach SPDX SBOM
 
 # Reusable workflow, Gate 5 in the release chain: runs after _release-github-release.yml
 # (Gate 4) has created the GitHub Release and attached the packed tarball. Generates an SPDX
-# JSON SBOM for that exact tarball asset (syft, installed via anchore/sbom-action's
-# download-syft sub-action, pinned to a full commit SHA) and attaches it to the SAME release
-# as `<tarball-basename>.spdx.json`.
+# JSON SBOM for that exact tarball asset — syft, installed by downloading its official pinned
+# release binary directly and verifying its sha256 against syft's own published checksums.txt
+# (no third-party GitHub Action, no installer script executed from the network) — and attaches
+# the SBOM to the SAME release as `<tarball-basename>.spdx.json`.
 #
 # GA criterion SUPPLY-001 (cw issue wave-av/claude-workstation#4803): every published release
 # must carry an SBOM asset. Before this workflow, @wave-av/cli releases had none.
@@ -81,7 +82,14 @@ jobs:
           fi
           # Full-anchored regex, not a glob — same shape resolve-tag.sh enforces upstream.
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-            echo "::error::sbom: '$TAG' does not match the required vX.Y.Z[-suffix] pattern"
+            # A workflow_dispatch string input can contain embedded newlines; interpolating it
+            # raw into a `::error::` line would let a line starting with `::` after one of those
+            # newlines be parsed as an unrelated workflow command. Strip newlines and keep the
+            # untrusted value off the `::error::` line entirely (constant message there; the raw
+            # value goes out on its own plain, non-`::`-prefixed line).
+            SAFE_TAG="$(printf '%s' "$TAG" | tr -d '\n\r')"
+            echo "::error::sbom: tag input does not match the required vX.Y.Z[-suffix] pattern"
+            printf 'sbom: rejected tag value (newlines stripped): %s\n' "$SAFE_TAG"
             exit 1
           fi
           if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
@@ -152,11 +160,39 @@ jobs:
           echo "basename=$BASENAME" >> "$GITHUB_OUTPUT"
           echo "extracted=$EXTRACTED" >> "$GITHUB_OUTPUT"
 
-      - name: Install syft
+      - name: Install syft (pinned release binary, checksum-verified — no installer script)
+        # Deliberately NOT anchore/sbom-action/download-syft here: that sub-action fetches
+        # syft's install.sh from a git TAG ref (raw.githubusercontent.com/anchore/syft/<tag>/
+        # install.sh) and executes it — a tag is a mutable ref, and executing a fetched shell
+        # script is more surface than this job needs. Instead: download syft's official release
+        # tarball for a PINNED version straight from its immutable GitHub Release asset URL, and
+        # verify its sha256 against that same release's published checksums.txt before ever
+        # executing the binary. No shell script from the network is ever run.
         id: syft
-        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
-        with:
-          syft-version: v1.51.1
+        env:
+          SYFT_VERSION: "1.51.1"
+        run: |
+          set -euo pipefail
+          WORKDIR="$RUNNER_TEMP/syft-install"
+          mkdir -p "$WORKDIR"
+          BASE="https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}"
+          TARBALL="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL -o "$WORKDIR/$TARBALL" "$BASE/$TARBALL"
+          curl -sSfL -o "$WORKDIR/checksums.txt" "$BASE/syft_${SYFT_VERSION}_checksums.txt"
+          EXPECTED="$(grep " ${TARBALL}\$" "$WORKDIR/checksums.txt" | awk '{print $1}')"
+          if [ -z "$EXPECTED" ]; then
+            echo "::error::sbom: no checksum entry for $TARBALL in syft's published checksums.txt"
+            exit 1
+          fi
+          ACTUAL="$(sha256sum "$WORKDIR/$TARBALL" | awk '{print $1}')"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::sbom: syft tarball checksum mismatch — expected $EXPECTED, got $ACTUAL. Refusing to execute an unverified binary."
+            exit 1
+          fi
+          echo "checksum verified: $TARBALL ($ACTUAL)"
+          tar -xzf "$WORKDIR/$TARBALL" -C "$WORKDIR" syft
+          chmod +x "$WORKDIR/syft"
+          echo "cmd=$WORKDIR/syft" >> "$GITHUB_OUTPUT"
 
       - name: Generate SPDX SBOM for the extracted tarball contents
         id: gen
