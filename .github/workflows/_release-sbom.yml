@@ -47,6 +47,17 @@ on:
         required: false
         type: string
 
+# Serializes with the release-tag scoped runs of both entry points to shrink the window where a
+# standalone workflow_dispatch could download the tarball while _release-github-release.yml is
+# mid-re-upload. Same group-key convention release.yml itself uses for a workflow_dispatch run
+# (`cli-release-<tag>`), so a dispatch-triggered backfill of either workflow for the same tag
+# queues rather than races. `gh release upload --clobber` is idempotent on both sides regardless,
+# so any residual race (e.g. against a push-tag-triggered release.yml run, whose own group key is
+# ref-based, not tag-based) is self-healing on the next run, never a permanent inconsistency.
+concurrency:
+  group: cli-release-${{ inputs.tag || 'latest' }}
+  cancel-in-progress: false
+
 jobs:
   sbom:
     name: Generate + attach SPDX SBOM
@@ -55,7 +66,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Resolve + validate tag (workflow_call passes it pre-validated; workflow_dispatch defaults to latest release)
+      - name: Resolve tag (workflow_call passes it pre-validated; workflow_dispatch defaults to latest release)
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
@@ -80,25 +91,66 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate tag trust (exists, is an ancestor of origin/main)
+        # workflow_call already receives a tag scripts/release/resolve-tag.sh validated this same
+        # way; this re-checks unconditionally (cheap, and uniform across both entry points) so the
+        # workflow_dispatch path can't be pointed at a release whose tag/commit was never verified
+        # to have actually merged to main (e.g. a release created by hand, out of band, pointing at
+        # an unmerged or force-pushed-away commit) — flagged by review as allowing an SBOM for an
+        # "unreviewed or unrelated tag" on the dispatch path.
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! SHA="$(git rev-parse --verify --quiet "refs/tags/${TAG}^{commit}")"; then
+            echo "::error::sbom: tag '$TAG' does not exist in this repository (or does not point at a commit)"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::sbom: tag '$TAG' (commit $SHA) is not reachable from origin/main -- refusing to attach an SBOM to a release for an unmerged or unrecognized ref"
+            exit 1
+          fi
+          echo "tag '$TAG' verified: exists, ancestor of origin/main ($SHA)"
+
       - name: Download the release's packed tarball asset
         id: download
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ steps.resolve.outputs.tag }}
+          VERSION: ${{ steps.resolve.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/sbom" "$RUNNER_TEMP/sbom/extracted"
           gh release download "$TAG" --repo "$REPO" --pattern '*.tgz' --dir "$RUNNER_TEMP/sbom" --clobber
-          TARBALL="$(find "$RUNNER_TEMP/sbom" -maxdepth 1 -name '*.tgz' | head -n1)"
-          if [ -z "$TARBALL" ]; then
+          TARBALL_COUNT="$(find "$RUNNER_TEMP/sbom" -maxdepth 1 -name '*.tgz' | wc -l | tr -d ' ')"
+          if [ "$TARBALL_COUNT" -eq 0 ]; then
             echo "::error::sbom: release '$TAG' has no .tgz asset — the release job (_release-github-release.yml) must pack + attach the tarball before this job can scan it"
             exit 1
           fi
+          if [ "$TARBALL_COUNT" -gt 1 ]; then
+            echo "::error::sbom: expected exactly one .tgz asset on release '$TAG', found $TARBALL_COUNT — refusing to guess which one to scan"
+            exit 1
+          fi
+          TARBALL="$(find "$RUNNER_TEMP/sbom" -maxdepth 1 -name '*.tgz')"
           BASENAME="$(basename "$TARBALL" .tgz)"
           tar -xzf "$TARBALL" -C "$RUNNER_TEMP/sbom/extracted"
+          EXTRACTED="$RUNNER_TEMP/sbom/extracted/package"
+          # The tag's version is what the SBOM will be labeled with — verify the tarball actually
+          # IS that version, so a stale or manually-uploaded/mismatched tarball asset fails loud
+          # instead of silently producing an SBOM that claims the wrong version.
+          PKG_VERSION="$(jq -r '.version' "$EXTRACTED/package.json")"
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "::error::sbom: tarball's package.json version '$PKG_VERSION' does not match tag '$TAG' (expected version '$VERSION') — refusing to attach a version-mismatched SBOM"
+            exit 1
+          fi
           echo "basename=$BASENAME" >> "$GITHUB_OUTPUT"
-          echo "extracted=$RUNNER_TEMP/sbom/extracted/package" >> "$GITHUB_OUTPUT"
+          echo "extracted=$EXTRACTED" >> "$GITHUB_OUTPUT"
 
       - name: Install syft
         id: syft
