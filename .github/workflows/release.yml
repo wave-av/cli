@@ -1,12 +1,16 @@
 name: Release (public npm)
 
 # Gated public-release path for @wave-av/cli. Orchestrator only — the actual
-# gates live in three reusable workflows (split out under this repo's
+# gates live in four reusable workflows (split out under this repo's
 # file-size gate once resolve/backfill/release-creation logic pushed a single
 # release.yml past the token budget):
 #   _release-verify.yml          Gate 1 (secret-scan) + Gate 2 (build/e2e-smoke)
 #   _release-publish.yml         Gate 3 (npm OIDC publish, idempotent) + live-registry verify
 #   _release-github-release.yml  Gate 4 (GitHub Release + tarball asset, idempotent)
+#   _release-sbom.yml            Gate 5 (SPDX SBOM asset on the release, idempotent) — closes
+#                                 GA criterion SUPPLY-001 (cw#4803). Also independently
+#                                 workflow_dispatch-able to backfill the SBOM onto an existing
+#                                 release without re-running Gates 1-4 — see that file's header.
 #
 # Triggers:
 #   - push:             a `v*` git tag (e.g. `v1.0.9`) — the normal path.
@@ -110,3 +114,12 @@ jobs:
     with:
       tag: ${{ needs.resolve.outputs.tag }}
       sha: ${{ needs.resolve.outputs.sha }}
+
+  sbom:
+    name: SBOM (SPDX, idempotent)
+    needs: [resolve, release]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/_release-sbom.yml
+    with:
+      tag: ${{ needs.resolve.outputs.tag }}

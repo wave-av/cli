@@ -1,0 +1,147 @@
+name: (reusable) Release — generate + attach SPDX SBOM
+
+# Reusable workflow, Gate 5 in the release chain: runs after _release-github-release.yml
+# (Gate 4) has created the GitHub Release and attached the packed tarball. Generates an SPDX
+# JSON SBOM for that exact tarball asset (syft, installed via anchore/sbom-action's
+# download-syft sub-action, pinned to a full commit SHA) and attaches it to the SAME release
+# as `<tarball-basename>.spdx.json`.
+#
+# GA criterion SUPPLY-001 (cw issue wave-av/claude-workstation#4803): every published release
+# must carry an SBOM asset. Before this workflow, @wave-av/cli releases had none.
+#
+# Two entry points:
+#   - workflow_call (normal path): chained from release.yml as the `sbom:` job, right after
+#     `release:`. Receives the tag scripts/release/resolve-tag.sh already validated (format,
+#     existence, ancestor-of-main) — this job trusts it and does not re-derive it.
+#   - workflow_dispatch (standalone backfill): produces the SBOM for an EXISTING release tag
+#     WITHOUT re-running the whole verify+publish+release chain (secret-scan, e2e-smoke, npm
+#     OIDC publish) just to attach one missing asset — this is how v1.0.10 is backfilled: it
+#     already has a release + tarball, it is just missing the SBOM. `tag` defaults to the
+#     latest GitHub Release when left empty.
+#
+# If a tag has NO GitHub Release at all yet (e.g. v1.0.9, which was never released), this job
+# deliberately does NOT fabricate one — it fails loud with the exact command to run instead:
+# `gh workflow run release.yml -f tag=<tag>`. That (idempotently) creates the release + packs
+# the tarball, and this job now runs immediately after it in that same chain, so the backfilled
+# release gets its SBOM in the same run.
+#
+# Idempotent: `gh release upload --clobber` makes re-running this for a tag that already has an
+# SBOM asset a safe no-op-that-refreshes, never a failure — same idempotency contract as
+# _release-github-release.yml's tarball upload.
+#
+# Provenance note: this scans the tarball ALREADY ATTACHED to the release (packed from the
+# exact built tree at the release commit by _release-github-release.yml), not a fresh
+# `npm pack` from the registry — that is the actual artifact a consumer downloads from the
+# GitHub Release, so it is the correct provenance surface for SUPPLY-001.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to attach an SBOM to (e.g. v1.0.10). Leave empty to use the latest GitHub Release.'
+        required: false
+        type: string
+
+jobs:
+  sbom:
+    name: Generate + attach SPDX SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve + validate tag (workflow_call passes it pre-validated; workflow_dispatch defaults to latest release)
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CALL_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="$CALL_TAG"
+          if [ -z "$TAG" ]; then
+            TAG="$(gh release view --repo "$REPO" --json tagName -q .tagName)"
+            echo "no tag input — defaulting to latest release: $TAG"
+          fi
+          # Full-anchored regex, not a glob — same shape resolve-tag.sh enforces upstream.
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::sbom: '$TAG' does not match the required vX.Y.Z[-suffix] pattern"
+            exit 1
+          fi
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "::error::sbom: no GitHub Release found for tag '$TAG'. This job attaches an SBOM to an EXISTING release; it does not create one. Run 'gh workflow run release.yml -f tag=$TAG' first — it (idempotently) creates the release + tarball, and this job then runs right after it in that same chain."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download the release's packed tarball asset
+        id: download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sbom" "$RUNNER_TEMP/sbom/extracted"
+          gh release download "$TAG" --repo "$REPO" --pattern '*.tgz' --dir "$RUNNER_TEMP/sbom" --clobber
+          TARBALL="$(find "$RUNNER_TEMP/sbom" -maxdepth 1 -name '*.tgz' | head -n1)"
+          if [ -z "$TARBALL" ]; then
+            echo "::error::sbom: release '$TAG' has no .tgz asset — the release job (_release-github-release.yml) must pack + attach the tarball before this job can scan it"
+            exit 1
+          fi
+          BASENAME="$(basename "$TARBALL" .tgz)"
+          tar -xzf "$TARBALL" -C "$RUNNER_TEMP/sbom/extracted"
+          echo "basename=$BASENAME" >> "$GITHUB_OUTPUT"
+          echo "extracted=$RUNNER_TEMP/sbom/extracted/package" >> "$GITHUB_OUTPUT"
+
+      - name: Install syft
+        id: syft
+        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          syft-version: v1.51.1
+
+      - name: Generate SPDX SBOM for the extracted tarball contents
+        id: gen
+        env:
+          SYFT_CMD: ${{ steps.syft.outputs.cmd }}
+          SRC: ${{ steps.download.outputs.extracted }}
+          PKG_NAME: "@wave-av/cli"
+          VERSION: ${{ steps.resolve.outputs.version }}
+          OUT: ${{ steps.download.outputs.basename }}.spdx.json
+        run: |
+          set -euo pipefail
+          "$SYFT_CMD" "dir:$SRC" --source-name "$PKG_NAME" --source-version "$VERSION" -o "spdx-json=$OUT"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Validate SBOM (non-empty, has packages[])
+        env:
+          SBOM_FILE: ${{ steps.gen.outputs.out }}
+        run: |
+          set -euo pipefail
+          if [ ! -s "$SBOM_FILE" ]; then
+            echo "::error::sbom: $SBOM_FILE is missing or empty"
+            exit 1
+          fi
+          COUNT=$(jq '(.packages // []) | length' "$SBOM_FILE")
+          echo "SPDX packages[]: $COUNT entries"
+          if [ "$COUNT" -lt 1 ]; then
+            echo "::error::sbom: $SBOM_FILE has an empty packages[] array"
+            exit 1
+          fi
+
+      - name: Upload SBOM to the release (idempotent)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          SBOM_FILE: ${{ steps.gen.outputs.out }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" "$SBOM_FILE" --repo "$REPO" --clobber
+          echo "attached $SBOM_FILE to release $TAG"
