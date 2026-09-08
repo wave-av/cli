@@ -1,0 +1,34 @@
+.github/workflows/_checks.yml
+  h_af5ac1a9798224 23,54,114
+.github/workflows/_release-github-release.yml
+  h_af5ac1a9798224 33
+.github/workflows/_release-publish.yml
+  h_af5ac1a9798224 55
+.github/workflows/_release-verify.yml
+  h_af5ac1a9798224 36,73
+.github/workflows/ga-evidence.yml
+  h_af5ac1a9798224 43
+.github/workflows/governance-enforce.yml
+  h_af5ac1a9798224 46
+.github/workflows/license-truth.yml
+  h_af5ac1a9798224 36,61
+.github/workflows/public-repo-guard.yml
+  h_af5ac1a9798224 45
+.github/workflows/release-drift.yml
+  h_af5ac1a9798224 42
+.github/workflows/release.yml
+  h_af5ac1a9798224 69
+.github/workflows/smoke-install.yml
+  h_af5ac1a9798224 45,107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "407161b7f5d2a54f63f31d9ece5d12269862556c",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
