@@ -30,10 +30,17 @@ name: (reusable) Release — generate + attach SPDX SBOM
 # SBOM asset a safe no-op-that-refreshes, never a failure — same idempotency contract as
 # _release-github-release.yml's tarball upload.
 #
-# Provenance note: this scans the tarball ALREADY ATTACHED to the release (packed from the
-# exact built tree at the release commit by _release-github-release.yml), not a fresh
-# `npm pack` from the registry — that is the actual artifact a consumer downloads from the
-# GitHub Release, so it is the correct provenance surface for SUPPLY-001.
+# Provenance note (updated for the SUPPLY-001 fix below): this job still downloads and verifies
+# the tarball ALREADY ATTACHED to the release (the exact packed artifact a consumer downloads),
+# but it does NOT scan that bare extracted tarball with syft — the packed tarball intentionally
+# omits package-lock.json/node_modules (see package.json `files`), so scanning it alone can never
+# surface a resolvable dependency graph. Instead: check out the SAME tagged commit (`ref:` below),
+# `npm ci` its pinned package-lock.json to materialize the real production node_modules tree, and
+# scan THAT with syft. This describes the exact dependency set that ships with the tarball
+# (resolved via the tagged commit's own lockfile) rather than the tarball's bytes directly. The
+# tarball download/verification step is kept for two reasons: (1) it fails loud if the release
+# job never packed a tarball for this tag, and (2) its filename is reused for the SBOM's own
+# output filename (`<tarball-basename>.spdx.json`), preserving the existing naming convention.
 
 on:
   workflow_call:
@@ -101,8 +108,13 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ steps.resolve.outputs.tag }}
           fetch-depth: 0
           persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
 
       - name: Validate tag trust (exists, is an ancestor of origin/main)
         # workflow_call already receives a tag scripts/release/resolve-tag.sh validated this same
@@ -160,6 +172,22 @@ jobs:
           echo "basename=$BASENAME" >> "$GITHUB_OUTPUT"
           echo "extracted=$EXTRACTED" >> "$GITHUB_OUTPUT"
 
+      # SUPPLY-001 fix (root cause): the packed tarball extracted above deliberately does NOT
+      # include package-lock.json or node_modules (npm's "files" allowlist in package.json only
+      # ships dist/templates/README/CHANGELOG/LICENSE/NOTICE) — so a syft scan of the extracted
+      # tarball alone can only ever see the single root "@wave-av/cli" package-directory entry,
+      # never the ~12 real runtime packages (chalk, commander, zod, ws, ...) declared in
+      # package.json `dependencies`. Measured on the live v1.0.10 SBOM: exactly 1 packages[]
+      # entry, the self-describing root directory, zero resolvable dependency packages.
+      # Fix: install the EXACT locked dependency tree from package-lock.json (already in git at
+      # this tagged commit, via the `ref:` checkout above) with `npm ci`, so syft has a real
+      # node_modules to catalog. `--omit=dev` matches what actually ships (production deps only,
+      # same set the tarball's consumers get transitively via npm install); `--ignore-scripts`
+      # keeps an SBOM-generation job (contents:write) from ever executing arbitrary lifecycle
+      # scripts pulled from the registry.
+      - name: Install production dependencies (npm ci, from the tagged commit's pinned lockfile)
+        run: npm ci --omit=dev --ignore-scripts
+
       - name: Install syft (pinned release binary, checksum-verified — no installer script)
         # Deliberately NOT anchore/sbom-action/download-syft here: that sub-action fetches
         # syft's install.sh from a git TAG ref (raw.githubusercontent.com/anchore/syft/<tag>/
@@ -194,11 +222,14 @@ jobs:
           chmod +x "$WORKDIR/syft"
           echo "cmd=$WORKDIR/syft" >> "$GITHUB_OUTPUT"
 
-      - name: Generate SPDX SBOM for the extracted tarball contents
+      # Scans $GITHUB_WORKSPACE (the tagged-commit checkout, now with node_modules populated by
+      # `npm ci --omit=dev` above) instead of the bare extracted tarball -- this is the tree that
+      # actually has a resolvable dependency graph for syft's npm/node cataloger to walk.
+      - name: Generate SPDX SBOM for the installed production dependency tree
         id: gen
         env:
           SYFT_CMD: ${{ steps.syft.outputs.cmd }}
-          SRC: ${{ steps.download.outputs.extracted }}
+          SRC: ${{ github.workspace }}
           PKG_NAME: "@wave-av/cli"
           VERSION: ${{ steps.resolve.outputs.version }}
           OUT: ${{ steps.download.outputs.basename }}.spdx.json
@@ -207,7 +238,16 @@ jobs:
           "$SYFT_CMD" "dir:$SRC" --source-name "$PKG_NAME" --source-version "$VERSION" -o "spdx-json=$OUT"
           echo "out=$OUT" >> "$GITHUB_OUTPUT"
 
-      - name: Validate SBOM (non-empty, has packages[])
+      # Fail-closed floor (SUPPLY-001 hardening): the old check only required `packages[] >= 1`,
+      # which the empty-dependency bug above satisfied trivially (the single self-describing root
+      # directory entry IS one package). The floor here is derived from the lockfile itself, not a
+      # hardcoded number, so it stays correct as dependencies are added/removed: count the direct
+      # runtime dependencies pinned in package-lock.json's root package (`packages[""].dependencies`,
+      # lockfileVersion >= 2/3 format) and require at least that many SBOM packages[] entries that
+      # carry a real `versionInfo` (i.e. actually-resolved packages, not placeholder/NOASSERTION
+      # entries). This makes a regression back to "syft ran on an uninstalled tree" fail the job
+      # instead of silently shipping an empty-looking SBOM again.
+      - name: Validate SBOM (non-empty, has packages[], meets the lockfile-derived dependency floor)
         env:
           SBOM_FILE: ${{ steps.gen.outputs.out }}
         run: |
@@ -220,6 +260,18 @@ jobs:
           echo "SPDX packages[]: $COUNT entries"
           if [ "$COUNT" -lt 1 ]; then
             echo "::error::sbom: $SBOM_FILE has an empty packages[] array"
+            exit 1
+          fi
+
+          WITH_VERSION=$(jq '[(.packages // [])[] | select(.versionInfo != null and .versionInfo != "" and .versionInfo != "NOASSERTION")] | length' "$SBOM_FILE")
+          FLOOR=$(jq '(.packages[""].dependencies // {}) | keys | length' package-lock.json)
+          echo "SPDX packages[] with a real versionInfo: $WITH_VERSION (lockfile direct-runtime-dependency floor: $FLOOR)"
+          if [ "$FLOOR" -lt 1 ]; then
+            echo "::error::sbom: could not derive a dependency floor from package-lock.json (packages[\"\"].dependencies was empty/missing) -- refusing to validate against a floor of 0"
+            exit 1
+          fi
+          if [ "$WITH_VERSION" -lt "$FLOOR" ]; then
+            echo "::error::sbom: $SBOM_FILE has only $WITH_VERSION versioned package(s), below the lockfile-derived floor of $FLOOR direct runtime dependencies -- syft likely scanned an uninstalled tree (SUPPLY-001 regression)"
             exit 1
           fi
 
