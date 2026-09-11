@@ -160,6 +160,37 @@ jobs:
           echo "basename=$BASENAME" >> "$GITHUB_OUTPUT"
           echo "extracted=$EXTRACTED" >> "$GITHUB_OUTPUT"
 
+      - name: Copy the released commit's lockfile into the extracted package
+        # SUPPLY-001 fix: `npm pack` never includes package-lock.json or node_modules in the
+        # published tarball (by npm design — a consumer resolves its own tree via package.json).
+        # Scanning the bare extracted tarball therefore gives syft nothing to enumerate but the
+        # root package itself: the SBOM this job produced before this fix had exactly ONE
+        # package entry (`@wave-av/cli` describing itself) for every release, regardless of the
+        # 12 direct / ~130 transitive runtime dependencies actually shipped — a "non-empty SBOM"
+        # by the letter of the old validation step (`packages[] >= 1`) that covered zero real
+        # supply-chain surface. Fix: pull package-lock.json from the EXACT released commit (the
+        # checkout above ran with fetch-depth: 0, so the tag's blob is present) and place it next
+        # to the extracted package.json before scanning. syft's npm lockfile cataloger then
+        # resolves the full dependency tree from the lockfile alone — no `npm install`, no code
+        # execution, no extra network calls. Verified locally with syft 1.51.1 (the version this
+        # job pins below): 1 package -> 130 packages for the current v1.0.10 release.
+        id: lockfile
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          EXTRACTED: ${{ steps.download.outputs.extracted }}
+        run: |
+          set -euo pipefail
+          if ! git show "${TAG}:package-lock.json" > "$EXTRACTED/package-lock.json" 2>/dev/null; then
+            echo "::error::sbom: no package-lock.json found at tag '$TAG' in this repository — refusing to generate a dependency-blind SBOM (this is exactly the empty-SBOM failure this step exists to prevent)"
+            rm -f "$EXTRACTED/package-lock.json"
+            exit 1
+          fi
+          if [ ! -s "$EXTRACTED/package-lock.json" ]; then
+            echo "::error::sbom: package-lock.json at tag '$TAG' is empty"
+            exit 1
+          fi
+          echo "copied package-lock.json from tag '$TAG' ($(wc -l < "$EXTRACTED/package-lock.json" | tr -d ' ') lines) into $EXTRACTED"
+
       - name: Install syft (pinned release binary, checksum-verified — no installer script)
         # Deliberately NOT anchore/sbom-action/download-syft here: that sub-action fetches
         # syft's install.sh from a git TAG ref (raw.githubusercontent.com/anchore/syft/<tag>/
@@ -207,7 +238,13 @@ jobs:
           "$SYFT_CMD" "dir:$SRC" --source-name "$PKG_NAME" --source-version "$VERSION" -o "spdx-json=$OUT"
           echo "out=$OUT" >> "$GITHUB_OUTPUT"
 
-      - name: Validate SBOM (non-empty, has packages[])
+      - name: Validate SBOM (has a real dependency tree, not just the root package)
+        # Threshold is 5, not 1: a SBOM containing only the root package itself (COUNT=1) is
+        # exactly the silent-empty-SBOM failure the lockfile-copy step above exists to prevent,
+        # and `packages[] >= 1` let that regression pass for every release before this fix. 5 is
+        # comfortably below @wave-av/cli's current ~130-package resolved tree (12 direct deps),
+        # so it catches "lockfile step silently no-opped again" without being brittle to the
+        # exact count drifting as dependencies are added/removed/upgraded over time.
         env:
           SBOM_FILE: ${{ steps.gen.outputs.out }}
         run: |
@@ -218,8 +255,8 @@ jobs:
           fi
           COUNT=$(jq '(.packages // []) | length' "$SBOM_FILE")
           echo "SPDX packages[]: $COUNT entries"
-          if [ "$COUNT" -lt 1 ]; then
-            echo "::error::sbom: $SBOM_FILE has an empty packages[] array"
+          if [ "$COUNT" -lt 5 ]; then
+            echo "::error::sbom: $SBOM_FILE has only $COUNT package(s) — expected the full resolved dependency tree (root + direct + transitive). This is the empty-SBOM regression; check that the lockfile-copy step ran and found package-lock.json at the release tag."
             exit 1
           fi
 
