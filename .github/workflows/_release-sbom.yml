@@ -34,7 +34,8 @@ name: (reusable) Release — generate + attach SPDX SBOM
 # the tarball ALREADY ATTACHED to the release (the exact packed artifact a consumer downloads),
 # but it does NOT scan that bare extracted tarball with syft — the packed tarball intentionally
 # omits package-lock.json/node_modules (see package.json `files`), so scanning it alone can never
-# surface a resolvable dependency graph. Instead: check out the SAME tagged commit (`ref:` below),
+# surface a resolvable dependency graph. Instead: resolve the tag to its commit SHA, verify that
+# SHA is an ancestor of origin/main, check out THAT SHA (never the mutable tag name),
 # `npm ci` its pinned package-lock.json to materialize the real production node_modules tree, and
 # scan THAT with syft. This describes the exact dependency set that ships with the tarball
 # (resolved via the tagged commit's own lockfile) rather than the tarball's bytes directly. The
@@ -106,9 +107,12 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
+      # No `ref:` here on purpose: a tag name is a mutable pointer. The trust step below resolves
+      # the tag to a commit SHA, verifies that SHA is an ancestor of origin/main, and only then
+      # checks out THAT SHA -- so the tree `npm ci` + syft describe is the verified commit, not
+      # whatever the tag happens to point at by the time this job runs.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ steps.resolve.outputs.tag }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -116,7 +120,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate tag trust (exists, is an ancestor of origin/main)
+      - name: Validate tag trust (exists, is an ancestor of origin/main) and check out its commit by SHA
         # workflow_call already receives a tag scripts/release/resolve-tag.sh validated this same
         # way; this re-checks unconditionally (cheap, and uniform across both entry points) so the
         # workflow_dispatch path can't be pointed at a release whose tag/commit was never verified
@@ -136,6 +140,9 @@ jobs:
             exit 1
           fi
           echo "tag '$TAG' verified: exists, ancestor of origin/main ($SHA)"
+          # Pin the working tree to the verified commit -- by SHA, never by the mutable tag name.
+          git checkout --quiet --detach "$SHA"
+          echo "checked out $SHA for the install + scan below"
 
       - name: Download the release's packed tarball asset
         id: download
@@ -180,7 +187,7 @@ jobs:
       # package.json `dependencies`. Measured on the live v1.0.10 SBOM: exactly 1 packages[]
       # entry, the self-describing root directory, zero resolvable dependency packages.
       # Fix: install the EXACT locked dependency tree from package-lock.json (already in git at
-      # this tagged commit, via the `ref:` checkout above) with `npm ci`, so syft has a real
+      # the verified tag commit checked out by SHA above) with `npm ci`, so syft has a real
       # node_modules to catalog. `--omit=dev` matches what actually ships (production deps only,
       # same set the tarball's consumers get transitively via npm install); `--ignore-scripts`
       # keeps an SBOM-generation job (contents:write) from ever executing arbitrary lifecycle
@@ -247,7 +254,10 @@ jobs:
       # carry a real `versionInfo` (i.e. actually-resolved packages, not placeholder/NOASSERTION
       # entries). This makes a regression back to "syft ran on an uninstalled tree" fail the job
       # instead of silently shipping an empty-looking SBOM again.
-      - name: Validate SBOM (non-empty, has packages[], meets the lockfile-derived dependency floor)
+      # The count is necessary but not sufficient: unrelated transitive packages could satisfy it
+      # while a declared dependency is absent. So the step ALSO checks by NAME that every key of
+      # `packages[""].dependencies` has a versioned SPDX entry, and fails listing the missing names.
+      - name: Validate SBOM (non-empty, has packages[], every declared runtime dependency present)
         env:
           SBOM_FILE: ${{ steps.gen.outputs.out }}
         run: |
@@ -274,6 +284,17 @@ jobs:
             echo "::error::sbom: $SBOM_FILE has only $WITH_VERSION versioned package(s), below the lockfile-derived floor of $FLOOR direct runtime dependencies -- syft likely scanned an uninstalled tree (SUPPLY-001 regression)"
             exit 1
           fi
+
+          # Identity check: every declared runtime dependency name must have a versioned entry.
+          MISSING="$(jq -r --slurpfile sbom "$SBOM_FILE" '
+            ([ $sbom[0].packages[]? | select(.versionInfo != null and .versionInfo != "" and .versionInfo != "NOASSERTION") | .name ] | unique) as $have
+            | ((.packages[""].dependencies // {}) | keys) as $want
+            | ($want - $have) | join(" ")' package-lock.json)"
+          if [ -n "$MISSING" ]; then
+            echo "::error::sbom: $SBOM_FILE has no versioned entry for declared runtime dependency(ies): $MISSING -- syft likely scanned an uninstalled tree (SUPPLY-001 regression)"
+            exit 1
+          fi
+          echo "every declared runtime dependency in package-lock.json has a versioned SPDX entry"
 
       - name: Upload SBOM to the release (idempotent)
         env:
