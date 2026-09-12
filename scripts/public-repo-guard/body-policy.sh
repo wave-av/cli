@@ -2,18 +2,28 @@
 # WAVE public-repo BODY policy — the internal-leak gate for PR/issue/comment text.
 #
 # Companion to content-policy.sh. That script scans the published working TREE;
-# this one scans the other half of a public repo's surface: pull-request titles
-# and bodies, issue bodies, and comment bodies. Those are equally world-readable
-# and, until this script existed, were scanned by NOTHING server-side. That gap
-# was not theoretical — a PR was merged whose wrangler.toml was correctly BLOCKED
-# for naming a private repo while the PR body named the same repo, with more
-# operational detail attached, and sailed through.
+# this one scans the other half of a public repo's surface: pull-request TITLES
+# and bodies, every COMMIT MESSAGE in a pull request, issue bodies, and comment
+# bodies. Those are equally world-readable and, until this script existed, were
+# scanned by NOTHING server-side. That gap was not theoretical — a PR was merged
+# whose wrangler.toml was correctly BLOCKED for naming a private repo while the PR
+# body named the same repo, with more operational detail attached, and sailed
+# through.
 #
 # Usage: scripts/public-repo-guard/body-policy.sh <file>
 #   <file> holds the untrusted text, already materialized to disk. It is passed as
 #   a PATH and only ever read — the body is never interpolated into a command line
 #   or an environment variable, so no amount of shell metacharacters in a PR body
 #   can influence what runs here.
+#
+#   The workflow calls this script once per SURFACE, each with its own file: the
+#   title+body payload, and the concatenated commit messages of the pull request.
+#   One script, one rule table, three surfaces — so a title and a commit message
+#   can never be held to a weaker standard than a body. A title-shaped leak is not
+#   hypothetical: a tracking id inside a conventional-commit scope
+#   ("fix(<ID>): …") reached a public repo on 2026-09-10 because the only gate in
+#   front of it read FILE CONTENT, and neither the title nor the commit messages
+#   that carried the same string were read by anything.
 #
 # Exit: 0 clean · 1 blocking violation · 2 scanner error (fail closed).
 #
@@ -146,6 +156,59 @@ check BLOCK abs-user-path    '/(Users|home)/(?!runner/)[a-z][a-z0-9._-]+/'    'O
 # threat here is the ACCIDENTAL paste; a deliberate evader has easier routes, and
 # `guard:allow <reason>` already exists as the honest, visible one.
 check BLOCK internal-marker  '(?<![“"'"'"'`])\b(internal[- ]only|do\s+not\s+(share|publish|distribute)|for\s+internal\s+use)\b(?![”"'"'"'`])' 'Text self-identifies as not-for-public' about-the-control-exempt
+
+# --- Internal tracking ids and internal document paths -----------------------
+# THE TITLE / COMMIT-MESSAGE CLASS. A conventional-commit scope is the single most
+# likely place for an internal id to reach a public repo: the id is how the work is
+# tracked internally, the scope is where a habit puts it, and a file-content scan
+# never reads a title or a commit message at all. One walked through on 2026-09-10.
+#
+# GENERIC SHAPES ONLY — this file is itself world-readable, so every pattern below
+# is a CLASS (letter/digit silhouettes, a directory prefix, a wikilink form). Not
+# one private repo name, product name, partner name or real id appears here; the
+# repo-name half of the policy stays where it belongs, in the run-time
+# GUARD_PRIVATE_REPOS variable used by the rule further down.
+#
+# The four regexes are kept in LOCKSTEP with the client-side pre-write gate's
+# equivalent table, which was measured against real merged public PRs before it
+# shipped. Keeping them byte-identical is the point: two gates that disagree about
+# the same policy is how a leak lands in the gap between them (exactly the
+# body-vs-wrangler.toml disagreement documented at the top of this file). If you
+# tune one, tune both.
+#
+# All four are `about-the-control-exempt`: a PR that CHANGES this gate has to be
+# able to describe what it now blocks, and a body that names the gate is prose
+# about the control, not a leak through it. Same use-vs-mention trade as
+# internal-marker above, and the same reason — a gate that blocks its own pull
+# requests gets switched off. A credential rule above still gets no such escape.
+
+# Internal criterion / ticket id: the XX-### tracking silhouette. The lookahead
+# exempts standards, algorithms and CVE-style names that share the shape
+# (SHA-256, PEP-503, ISO-8601, CWE-200) and the lowercase path/branch words
+# (fix/issue-123, step-001); the lookbehind exempts an id embedded in a path or a
+# dotted name. Three digits exactly, so CVE-2025-12345 and RFC-7231 stay free.
+check BLOCK internal-id \
+  '(?<![\w/.-])(?!(?:SHA|AES|HMAC|RSA|ECDSA|ECDH|CRC|NIST|RFC|PEP|IEEE|ISO|IEC|UTF|SMPTE|EBU|ANSI|MPEG|HEVC|BCP|ITU|IETF|FIPS|OWASP|CWE|issue|issues|pr|pull|fix|bug|task|step|test|tests|node|port|run|job|item|part|page|line|v|rev|build)-)[A-Z]{2,8}-\d{3}(?![\w-])' \
+  'Internal criterion / ticket id (the XX-### tracking shape) — internal tracking state, not public product detail' \
+  about-the-control-exempt
+
+# Decision-record id: who decided what, and when, in one token.
+check BLOCK internal-decision-id '\bIGV-[A-Z]-\d{3}\b' \
+  'Internal decision-record id — the record of who decided what is not public' \
+  about-the-control-exempt
+
+# Epic / plan / workstream id (E4-SOME-THING): names an internal workstream.
+check BLOCK internal-plan-id '\bE\d{1,2}-[A-Z]{3,}(?:-[A-Z]{3,})+\b' \
+  'Internal plan / workstream id — names an internal programme of work' \
+  about-the-control-exempt
+
+# Internal document paths: an internal-process directory, a long-hyphenated rule
+# filename, or a [[wikilink]] to one. The four-plus-word rule-file shape keeps an
+# eslint-style rules/no-unused-vars.md clean.
+check BLOCK internal-doc-path \
+  '(?<![\w-])governance/(?:bin|lib|plans|rules|sources|data|test|vendor-bundles)/|\brules/[a-z0-9]+(?:-[a-z0-9]+){3,}\.md\b|\[\[[a-z0-9]+(?:-[a-z0-9]+){2,}\]\]' \
+  'Internal process document path or wikilink — internal document layout is not public' \
+  about-the-control-exempt
 
 # --- Private repo + operational detail (PROXIMITY, not bare name) ------------
 # The BODY profile deliberately DIVERGES from the FILE profile here, and the
