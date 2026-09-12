@@ -1,0 +1,215 @@
+templates/webhook-handler/src/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-52
+src/commands/dev/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-256
+src/lib/output/table.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-45
+src/lib/api-client.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-63
+src/commands/config/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-94
+templates/api-integration/package.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-17
+templates/api-integration/src/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-24
+templates/srt-contribution/.env.example
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1
+src/commands/analytics/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-54
+templates/webrtc-demo/.env.example
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1
+.gitignore
+  s_63c6ee080d73c3::t_a7f749b92ec737 1-5
+templates/multi-camera/package.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-17
+templates/srt-contribution/package.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-17
+src/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-11
+src/commands/chapters/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-57
+src/lib/sse-client.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-180
+src/lib/auth/keychain.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-111
+src/commands/sentiment/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-47
+src/commands/slides/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-60
+src/commands/stream/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-167
+package.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-80
+src/commands/doctor/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-143
+src/commands/podcast/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-123
+src/commands/creator/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-64
+src/commands/desktop/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-44
+src/commands/ai/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-54
+src/commands/vault/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-81
+src/commands/collab/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-71
+src/lib/config/manager.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-54
+src/lib/output/confirm.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-20
+src/lib/prompts.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-123
+templates/blank/src/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-16
+templates/multi-camera/.env.example
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1
+templates/podcast/.env.example
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1
+templates/podcast/package.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-17
+templates/srt-contribution/src/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-29
+templates/studio-plugin/src/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-32
+src/commands/open/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-51
+tsup.config.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-10
+src/lib/auth/device-flow.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-154
+src/commands/logs/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-90
+src/commands/edge/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-82
+src/commands/mesh/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-55
+src/commands/ghost/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-51
+src/commands/notify/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-88
+src/commands/status/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-68
+src/commands/transcribe/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-52
+src/commands/drm/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-146
+src/commands/fleet/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-66
+src/commands/admin/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-75
+src/commands/marketplace/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-65
+src/lib/errors.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-108
+templates/studio-plugin/package.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-17
+RECOVERY.md
+  s_63c6ee080d73c3::t_3776e08a219ac2 1-98
+src/commands/auth/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-139
+src/commands/studio/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-143
+src/commands/usb/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-61
+src/commands/completion/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-140
+src/lib/config/schema.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-33
+src/commands/link/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-218
+src/commands/listen/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-66
+src/commands/prism/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-64
+src/lib/output/yaml.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-5
+src/lib/output/json.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-8
+templates/webrtc-demo/package.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-17
+src/commands/audience/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-136
+src/lib/output/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-33
+templates/webhook-handler/.env.example
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-3
+src/commands/billing/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-110
+src/commands/qr/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-51
+templates/api-integration/.env.example
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-2
+src/commands/api/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-82
+src/commands/phone/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-86
+src/commands/zoom/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-131
+src/lib/exit-codes.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-20
+src/commands/voice/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-56
+templates/blank/.env.example
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1
+src/commands/connect/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-66
+templates/webhook-handler/package.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-19
+templates/multi-camera/src/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-49
+src/commands/distribution/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-74
+src/lib/output/spinner.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-18
+templates/podcast/src/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-33
+src/commands/clips/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-78
+src/commands/scene/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-51
+tsconfig.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-15
+src/lib/environment.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-66
+templates/studio-plugin/.env.example
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-2
+src/commands/signage/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-126
+src/cli.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-174
+src/lib/suggestions.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-96
+templates/webrtc-demo/src/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-31
+templates/blank/package.json
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-17
+src/commands/org/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-73
+src/commands/search/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-74
+src/commands/init/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-253
+src/commands/editor/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-58
+src/commands/captions/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-60
+src/commands/trigger/index.ts
+  s_63c6ee080d73c3::t_73d4fbb3949dde 1-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8ce183a2aeac624cb9bbb9122b90ddfbfcef458f",
+  "prompts": {},
+  "sessions": {
+    "s_63c6ee080d73c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28a4927c-1b01-4d33-904e-e27db5f3d5dc",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

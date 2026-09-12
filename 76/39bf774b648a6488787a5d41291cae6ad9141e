@@ -1,0 +1,22 @@
+.github/workflows/_release-sbom.yml
+  s_efe86faf2558e9::t_ab50850a1064c4 1-147
+.github/workflows/release.yml
+  s_efe86faf2558e9::t_a894645c43b182 4,10-13
+  s_efe86faf2558e9::t_40fa563a881e64 117-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "7639bf774b648a6488787a5d41291cae6ad9141e",
+  "prompts": {},
+  "sessions": {
+    "s_efe86faf2558e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b6e2e9-ab55-4d57-9d9f-d57a588ae688",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
