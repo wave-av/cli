@@ -1,0 +1,26 @@
+scripts/public-repo-guard/body-policy.sh
+  s_efe86faf2558e9::t_b0c2bd4b65816e 27,160-212
+  s_efe86faf2558e9::t_271ce8f1268de5 5-11,19-26
+.github/workflows/public-repo-guard-body.yml
+  s_efe86faf2558e9::t_135243c4d77747 136,140-180
+  s_efe86faf2558e9::t_7061723a770bbf 15-23
+  s_efe86faf2558e9::t_c8ccecaac0f690 54-60,63
+scripts/public-repo-guard/tests/body-policy.test.sh
+  s_efe86faf2558e9::t_c66201dbac8bbe 87-106,108-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5feec8e22ab545e7de157268444146d0ea9bf876",
+  "prompts": {},
+  "sessions": {
+    "s_efe86faf2558e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b6e2e9-ab55-4d57-9d9f-d57a588ae688",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
