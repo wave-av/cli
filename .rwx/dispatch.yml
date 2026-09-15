@@ -1,0 +1,44 @@
+# RWX ad-hoc dispatch triggers (dormant until dispatched via UI/API/CLI).
+# Proves the wave-ci rwx-dispatch path end to end without touching push CI.
+on:
+  cli:
+    init:
+      commit-sha: ${{ event.git.sha }}
+      environment: trial
+  dispatch:
+    - key: wave-cli-verify
+      params:
+        - key: environment
+          name: Environment label
+          description: Free-form label recorded in the run title only. No deploys.
+          default: trial
+          required: false
+      init:
+        commit-sha: ${{ event.git.sha }}
+        environment: ${{ event.dispatch.params.environment }}
+
+base:
+  image: ubuntu:24.04
+  config: rwx/base 1.2.0
+
+tasks:
+  - key: code
+    call: git/clone 2.1.0
+    with:
+      repository: https://github.com/wave-av/cli.git
+      ref: ${{ init.commit-sha }}
+      github-token: ${{ github.token }}
+
+  - key: node
+    call: nodejs/install 1.2.0
+    with:
+      node-version: "22.23.2"
+
+  - key: verify
+    use: [code, node]
+    run: |
+      npm ci --no-audit --no-fund
+      npm run type-check
+      npx vitest run
+    env:
+      DISPATCH_ENV: ${{ init.environment }}
