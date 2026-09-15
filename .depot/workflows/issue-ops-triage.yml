@@ -1,0 +1,30 @@
+# Depot CI Migration
+# Source: .github/workflows/issue-ops-triage.yml
+#
+# Changes made:
+# - Removed unsupported trigger "issues"
+
+name: issue-ops-triage
+# Removed unsupported trigger: issues. Issue events are not supported.
+on: {}
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: issue-ops-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+jobs:
+  triage:
+    if: vars.IO_ENABLED == 'true'
+    uses: wave-av/wave-foundation-public/.github/workflows/io-triage.yml@f63b91566ab311b09599db6195da8c353cab1f69
+    permissions:
+      contents: read
+      issues: write
+    with:
+      scripts_repo: wave-av/wave-foundation-public
+      scripts_ref: "f63b91566ab311b09599db6195da8c353cab1f69"
+      owner: ${{ vars.IO_OWNER }}
+    secrets:
+      gh_pat: ${{ secrets.ISSUE_OPS_PAT }}
+      bot_app_id: ${{ secrets.BOT_ISSUE_OPS_APP_ID }}
+      bot_private_key: ${{ secrets.BOT_ISSUE_OPS_PRIVATE_KEY }}
