@@ -27,7 +27,10 @@ tasks:
     with:
       repository: https://github.com/wave-av/cli.git
       ref: ${{ init.commit-sha }}
-      github-token: ${{ github.token }}
+      # NOTE: the `github` context does not exist on dispatch-triggered runs
+      # (only on github/cli triggers). Use a vault-backed read-only PAT instead.
+      # One-time setup: rwx vaults secrets set GH_READ_TOKEN=<classic-PAT-repo-read> --vault default
+      github-token: ${{ secrets.GH_READ_TOKEN }}
 
   - key: node
     call: nodejs/install 1.2.0
