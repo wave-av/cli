@@ -11,6 +11,7 @@ import { registerVoiceCommands } from "./commands/voice/index.js";
 import { registerPhoneCommands } from "./commands/phone/index.js";
 import { registerCollabCommands } from "./commands/collab/index.js";
 import { registerCaptionsCommands } from "./commands/captions/index.js";
+import { registerCiCommands } from "./commands/ci/index.js";
 import { registerChaptersCommands } from "./commands/chapters/index.js";
 import { registerAICommands } from "./commands/ai/index.js";
 import { registerTranscribeCommands } from "./commands/transcribe/index.js";
@@ -108,6 +109,7 @@ export function createProgram(): Command {
   registerPhoneCommands(program);
   registerCollabCommands(program);
   registerCaptionsCommands(program);
+  registerCiCommands(program);
   registerChaptersCommands(program);
   registerAICommands(program);
   registerTranscribeCommands(program);
