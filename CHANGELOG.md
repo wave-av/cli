@@ -6,7 +6,41 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-28
+
+### Added
+
+- `wave srt inputs create|list|get|delete` — SRT ingest against the GA route
+  `/v1/srt/inputs`.
+- `wave moq token publish|subscribe --ns --track` — MoQ session token minting
+  against `/v1/moq/publish|subscribe/:ns/:track`.
+- `wave whip publish --file|--url` — mints a WHIP publish session and prints
+  the WHIP URL + bearer token in the shape OBS Studio's WHIP output needs.
+- `wave whep subscribe --id` — mints a WHEP subscribe session.
+- `wave crest sessions create|list|get` — Crest (MoQ browser player) sessions.
+- `wave dante observe --node` — Dante control-plane observation.
+- `wave listen sessions create|list|get`, nested under the pre-existing
+  `wave listen` (webhook-forwarding) command, for the unrelated "Listen"
+  media spoke's session routes — `wave listen` with no subcommand keeps its
+  original webhook behavior unchanged.
+
+None of the six new modules import a per-protocol SDK class: `@wave-av/sdk`
+does not ship one yet, so each calls the SDK's already-published generic
+`WaveClient.get/post/delete` directly (the same pattern `wave compose`
+already established) against the routes this platform's go-live definition
+names explicitly.
+
 ### Fixed
+
+- `wave stream *` used to call `client.pipeline.*`, targeting `/v1/streams` —
+  a route the GA readiness audit confirmed returns 404 ROUTE_NOT_FOUND ("no
+  spoke and no override"). Every `stream` subcommand now prints an honest
+  preview notice and exits 2 WITHOUT constructing an SDK client or making any
+  network call, and points at the two protocols that ARE served
+  (`wave srt inputs create`, `wave whip publish`).
+- `wave phone *` marked preview for the same reason (`/v1/phone` is in the
+  same hard-break list as `/v1/streams`): every subcommand now prints an
+  honest preview notice and exits 2 without a network call.
 
 - `pr-agent` lane: fork-triggered `/` commands are now refused, and the AI
   call's budget fits inside its step. Three defects, one of them only visible
