@@ -17,11 +17,25 @@ vi.mock("../../lib/auth/keychain.js", () => ({
   storeApiKey: vi.fn(),
   deleteApiKey: vi.fn(),
   deleteAllKeys: vi.fn(),
+  getRefreshToken: vi.fn(),
+  storeRefreshToken: vi.fn(),
 }));
 
 import { loadConfig } from "../../lib/config/manager.js";
 import { getApiKey } from "../../lib/auth/keychain.js";
+import { EXIT_CODES } from "../../lib/exit-codes.js";
 import { registerAuthCommands } from "./index.js";
+
+// These tests exercise the stored-key path: a WAVE_API_KEY in the developer's shell (which every
+// command now honors first) must not leak in and flip "unauthenticated" cases to authenticated.
+beforeEach(() => {
+  vi.stubEnv("WAVE_API_KEY", "");
+  vi.stubEnv("WAVE_BASE_URL", "");
+  vi.stubEnv("WAVE_PROJECT", "");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function buildProgram(): Command {
   const program = new Command();
@@ -83,13 +97,21 @@ describe("wave whoami", () => {
     vi.unstubAllGlobals();
   });
 
-  it("exits 1 immediately when no API key is stored, without calling the API", async () => {
+  it("exits non-zero (AUTH_REQUIRED) immediately when no API key is stored, without calling the API", async () => {
     vi.mocked(getApiKey).mockResolvedValue(null);
     const program = buildProgram();
     await program.parseAsync(["node", "wave", "whoami"]);
 
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(exitSpy).toHaveBeenCalledWith(EXIT_CODES.AUTH_REQUIRED);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("calls GET /v1/me, not the unserved /api/v1/me", async () => {
+    vi.mocked(getApiKey).mockResolvedValue("wv_test_key");
+    const program = buildProgram();
+    await program.parseAsync(["node", "wave", "whoami"]);
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe("https://api.wave.online/v1/me");
   });
 
   it("calls the API host (api.wave.online), not the wave.online marketing site", async () => {
@@ -98,7 +120,7 @@ describe("wave whoami", () => {
     await program.parseAsync(["node", "wave", "whoami"]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url] = fetchMock.mock.calls[0] as [string, unknown];
+    const url = String((fetchMock.mock.calls[0] as [unknown, unknown])[0]);
     expect(url).toContain("https://api.wave.online");
     expect(url).not.toContain("https://wave.online/");
     expect(exitSpy).not.toHaveBeenCalled();

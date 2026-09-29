@@ -25,8 +25,65 @@ export class CapabilityUnavailableError extends Error {
   }
 }
 
+/**
+ * No credential at all: neither WAVE_API_KEY nor a key stored by `wave auth login`. Raised BEFORE
+ * any request, so it carries no status code or request ID.
+ */
+export class AuthRequiredError extends Error {
+  constructor(message = "Not authenticated. Run `wave auth login` (or set WAVE_API_KEY) first.") {
+    super(message);
+    this.name = "AuthRequiredError";
+  }
+}
+
+/**
+ * Gateway codes meaning "no WAVE capability is served at this path": ROUTE_NOT_FOUND (no spoke)
+ * and ROUTE_NOT_MAPPED (fail-closed: no scope rule). Neither means "your resource does not exist",
+ * so they must not read as an ordinary 404 that invites the user to retry with another ID.
+ */
+const UNSERVED_ROUTE_CODES = new Set(["ROUTE_NOT_FOUND", "ROUTE_NOT_MAPPED"]);
+
+/** True when the command line asked for JSON (-o json, --output json, --output=json). */
+export function argvRequestsJson(argv: readonly string[]): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if ((arg === "-o" || arg === "--output") && argv[i + 1] === "json") return true;
+    if (arg === "--output=json" || arg === "-ojson") return true;
+  }
+  return false;
+}
+
 export function formatCLIError(error: unknown): { message: string; exitCode: number } {
-  const env = detectEnvironment();
+  const detected = detectEnvironment();
+  const env = { ...detected, preferJson: detected.preferJson || argvRequestsJson(process.argv) };
+
+  if (error instanceof AuthRequiredError) {
+    const exitCode = EXIT_CODES.AUTH_REQUIRED;
+    if (env.preferJson) {
+      const structured = toStructuredError("AUTH_REQUIRED", error.message, exitCode, [
+        { message: "Authenticate", command: "wave auth login" },
+        { message: "Use an API key", command: "export WAVE_API_KEY=..." },
+      ]);
+      return { message: JSON.stringify(structured, null, 2), exitCode };
+    }
+    return { message: chalk.red(error.message), exitCode };
+  }
+
+  if (error instanceof WaveError && UNSERVED_ROUTE_CODES.has(error.code)) {
+    const exitCode = EXIT_CODES.NOT_IMPLEMENTED;
+    const message =
+      `This command's API route is not served by the WAVE API yet (${error.code}). ` +
+      "Nothing was created or charged.";
+    if (env.preferJson) {
+      const structured = toStructuredError(error.code, message, exitCode, [], error.requestId);
+      return { message: JSON.stringify(structured, null, 2), exitCode };
+    }
+    const lines = [
+      chalk.yellow(message),
+      error.requestId ? chalk.dim(`  Request ID: ${error.requestId}`) : "",
+    ].filter(Boolean);
+    return { message: lines.join("\n"), exitCode };
+  }
 
   if (error instanceof CapabilityUnavailableError) {
     const exitCode = EXIT_CODES.NOT_IMPLEMENTED;
@@ -44,8 +101,8 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
         `Rate limit exceeded. Retry after ${error.retryAfter}ms.`,
         EXIT_CODES.RATE_LIMITED,
         [
-          { message: "Check your limits", command: "wave billing limits" },
-          { message: "Upgrade your plan", command: "wave billing upgrade" },
+          { message: "Check your usage", command: "wave billing usage" },
+          { message: "Check your plan", command: "wave billing status" },
         ],
         error.requestId,
       );
@@ -69,7 +126,7 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
     if (env.preferJson) {
       const suggestions =
         error.statusCode === 401
-          ? [{ message: "Authenticate", command: "wave login" }, { message: "Use API key", command: "export WAVE_API_KEY=..." }]
+          ? [{ message: "Authenticate", command: "wave auth login" }, { message: "Use API key", command: "export WAVE_API_KEY=..." }]
           : error.statusCode === 404
             ? [{ message: "List resources", command: "wave <resource> list" }]
             : [];

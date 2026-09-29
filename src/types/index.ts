@@ -18,10 +18,11 @@ export interface WaveConfig {
   version: string;
   currentProject: string;
   projects: Record<string, {
-    organizationId: string;
-    organizationName: string;
+    organizationId?: string;
+    organizationName?: string;
     baseUrl?: string;
     region?: string;
+    tokenExpiresAt?: number;
   }>;
   defaults: { outputFormat: OutputFormat; protocol?: string; color: "auto" | "on" | "off" };
   telemetry: { enabled: boolean; errorReporting: boolean };

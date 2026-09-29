@@ -72,20 +72,27 @@ export function registerDoctorCommands(program: Command): void {
             name: "Auth",
             status: "fail",
             message: "No API key found",
-            fix: "wave login",
+            fix: "wave auth login  (or export WAVE_API_KEY=...)",
           });
         }
 
-        // 4. Project configuration
+        // 4. Project configuration. `wave auth login` writes the entry; `--project <name>` picks
+        // which one (1.0.10 suggested a `--project-name` flag that never existed). With
+        // WAVE_API_KEY set no saved project is needed at all.
         const projectCount = Object.keys(config.projects).length;
         checks.push({
           name: "Projects",
-          status: projectCount > 0 ? "pass" : "warn",
+          status: projectCount > 0 || envKey ? "pass" : "warn",
           message:
             projectCount > 0
               ? `${projectCount} project(s) configured`
-              : "No projects configured",
-          fix: projectCount === 0 ? "wave login --project-name production" : undefined,
+              : envKey
+                ? "None saved (not needed: WAVE_API_KEY is set)"
+                : "No projects configured",
+          fix:
+            projectCount === 0 && !envKey
+              ? "wave auth login  (or: wave auth login --project production)"
+              : undefined,
         });
 
         // 5. Environment detection

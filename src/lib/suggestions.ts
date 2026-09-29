@@ -12,8 +12,8 @@ interface Suggestion {
 }
 
 const AUTH_SUGGESTIONS: Suggestion[] = [
-  { message: "Authenticate with WAVE", command: "wave login" },
-  { message: "Use an API key directly", command: "wave login --api-key <your-key>" },
+  { message: "Authenticate with WAVE", command: "wave auth login" },
+  { message: "Use an API key directly", command: "wave auth login --api-key <your-key>" },
   { message: "Set env var for CI/CD", command: "export WAVE_API_KEY=wave_live_..." },
 ];
 
@@ -29,8 +29,8 @@ const NOT_FOUND_SUGGESTIONS: Record<string, Suggestion[]> = {
 };
 
 const RATE_LIMIT_SUGGESTIONS: Suggestion[] = [
-  { message: "Check your current limits", command: "wave billing limits" },
-  { message: "Upgrade your plan", command: "wave billing upgrade" },
+  { message: "Check your current usage", command: "wave billing usage" },
+  { message: "Check your plan", command: "wave billing status" },
   { message: "Wait and retry (the CLI does this automatically)" },
 ];
 
