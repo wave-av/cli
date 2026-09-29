@@ -42,8 +42,8 @@ All notable changes to this project are documented here. The format is based on
   because your account is locked due to a billing issue" (confirmed across 25 consecutive daily
   runs, 2026-09-11 through 2026-09-28, via `gh run view <id>` — the last *executed* run,
   2026-09-10, was green). No code change fixes an org-wide Actions billing lock from inside
-  this repo; the fix is running the check locally (as this entry's receipt does) until WAVE's
-  own CI plane (`wave-ci`) replaces the blocked GitHub Actions schedule.
+  this repo; the fix is running the check locally (as this entry's receipt does) until the
+  scheduled Action is replaced with an unblocked CI plane.
 
 - `pr-agent` lane: fork-triggered `/` commands are now refused, and the AI
   call's budget fits inside its step. Three defects, one of them only visible
