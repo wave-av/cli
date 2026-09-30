@@ -12,12 +12,24 @@ All notable changes to this project are documented here. The format is based on
   - `wave auth login --api-key` and `wave auth logout` crashed with `keytar.setPassword is not a
     function`. keytar is CommonJS; under Node ESM `await import("keytar")` exposes only
     `getPassword` as a named export and the full API on `.default`. The loader now takes
-    `.default` when it is complete, and falls back to `~/.wave/credentials.json` (mode 0600)
-    when no complete keychain module exists or `WAVE_CREDENTIAL_STORE=file` is set.
+    `.default` when it is complete. When keytar cannot load at all it falls back to
+    `~/.wave/credentials.json` (mode 0600) and says so once on stderr; `WAVE_CREDENTIAL_STORE=file`
+    selects the file explicitly. A keytar that loads without its full API is refused with an
+    error instead of silently degrading to the file.
+  - The credentials file and `~/.wave/config.json` are updated under an inter-process lock and
+    written atomically, so two `wave` processes (a token refresh and a login to another project)
+    cannot drop each other's change. A config or credentials file that does not parse is
+    reported (config: exit 9) and left untouched; earlier versions overwrote it with defaults,
+    erasing every saved project. Reading a missing config no longer creates one.
+  - `wave auth login --api-key-stdin` reads the key from a pipe, keeping it out of the process
+    list and shell history. Logging in again clears the organization cached for the project.
   - `wave auth login` (device flow) called `/api/oauth/device/authorize|token`, which the API
     answers 404 `ROUTE_NOT_FOUND`. It now uses the SDK's agent-auth ceremony on
     `POST /v1/agent/auth/device` and `/v1/agent/auth/token`, stores the refresh token, and
-    refreshes an expired access token before use. `--no-browser` prints the URL only.
+    refreshes an expired access token before use. A refused refresh sends the old token (the
+    API's 401 then says to log in again); a network failure past expiry, or a refreshed token
+    that cannot be saved, is reported instead of being swallowed. `--no-browser` prints the URL
+    only, and the browser is opened only for a verification page on the API host.
   - `auth login` now writes the project entry that every API command reads. 1.0.10 stored a key
     and then refused to use it: `No project "default" configured`.
   - `wave login` / `wave logout` exist as aliases (README, `wave doctor` and error hints all
@@ -33,26 +45,36 @@ All notable changes to this project are documented here. The format is based on
   `WAVE_BASE_URL`, then the project's `baseUrl`, then `https://api.wave.online`). `whoami`,
   `auth status`, `status`, `api`, `billing` and `link` read the keychain only, so CI users with
   `WAVE_API_KEY` were told "Not authenticated".
+- The API host must be `https://` (`http://` only for localhost): a `WAVE_BASE_URL` or saved
+  `baseUrl` that would send the key or a refresh token in cleartext is refused with exit 9.
+- `--org` now reaches every command, including the raw-route ones (billing, analytics,
+  identity, webhook subscriptions, `wave api`). Order: `--org`, then `WAVE_ORG_ID`, then the
+  saved org.
 - `wave whoami` called `/api/v1/me` (404). It now calls `GET /v1/me`; when the key lacks
   `me:read` it still reports the organization (from `GET /v1/billing`) and says why the profile
-  is missing. `whoami -o json` and `status -o json` now print exactly one JSON document (1.0.10
+  is missing. When the key cannot read billing either, `organizationUnavailable` says so;
+  any other failure of that fallback (401, 5xx) is an error, not a partial identity. Text
+  from the API is stripped of terminal control sequences before it is printed. `whoami -o json` and `status -o json` now print exactly one JSON document (1.0.10
   printed the human block first, so piping to `jq` failed).
 - A missing credential now exits 2 (`AUTH_REQUIRED`, the documented code) from every command,
-  with the structured error under `-o json`. 1.0.10 exited 1 with `No project "default"
-  configured`.
+  including `wave auth status`, with the structured error under `-o json`. 1.0.10 exited 1 with
+  `No project "default" configured`.
 - `wave billing status|usage` called `https://wave.online/api/billing/*` (the marketing site,
   404 on every path). They now call `GET /v1/billing` and `GET /v1/billing/usage` on the API
   host. `invoices`, `limits`, `portal` and `upgrade` have no API route yet and say so without
   sending a request.
 - `wave api` defaulted to `https://wave.online` and ignored `WAVE_API_KEY`. It now targets the
-  API host, and refuses to send your credential to an absolute URL on a different origin.
+  API host, and refuses to send your credential to an absolute URL on a different origin. On
+  failure it still prints the response, and exits with the shared codes (2, 7, 11 for an
+  unserved route) instead of a blanket 1.
 - `wave identity resolve` sent `POST` with a body; the served route is
   `GET /v1/identity/resolve?agent=<id>`. Errors from raw API calls (identity, webhook
   subscriptions, billing, analytics) now honor `-o json` and keep the gateway's code and
   message when the body is flat (`{"error":"...","code":"...","message":"..."}`) instead of
   reporting a bare `HTTP_4xx`. SDK-backed commands need the matching `@wave-av/sdk` parser fix.
 - `wave link` no longer depends on `GET /v1/organizations` and `/v1/projects` (neither is
-  served). It records the organization the key acts for, and exits non-zero when
+  served). It records the organization the key acts for (asked without the previously saved
+  org header, so a project relinks cleanly after a key change), and exits non-zero when
   unauthenticated.
 - `wave init` scaffolded an empty project: templates were looked up three directories above the
   bundled `dist/index.js`, missed, and silently replaced by an empty `src/`. Templates now
@@ -65,8 +87,9 @@ All notable changes to this project are documented here. The format is based on
   `blank` and `api-integration` templates call served routes. Every offered template now
   type-checks against `@wave-av/sdk` 2.1.3 (`multi-camera` and `podcast` used field names the SDK
   does not have); templates whose routes are not confirmed served are labelled preview.
-  `webhook-handler` and `studio-plugin` are withheld: they call `wave.webhooks.verify` and
-  `wave.studio.registerPlugin`, which the SDK does not provide, and `--template` says so.
+  `webhook-handler` and `studio-plugin` are removed from the package: they called
+  `wave.webhooks.verify` and `wave.studio.registerPlugin`, which the SDK does not provide, and
+  `--template` says so.
 - Commands whose route the API does not serve (`ROUTE_NOT_FOUND` / `ROUTE_NOT_MAPPED`) now say
   so and exit 11 instead of printing a plain 404. `wave logs tail`, `listen`, `trigger`, `dev`,
   `admin jobs`, `mesh status` and `mesh regions` targeted routes that do not exist and now stop

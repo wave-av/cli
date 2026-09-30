@@ -17,7 +17,9 @@
 //     one unapproved ceremony and poll it for 15s). No writes, nothing billed.
 //   - Runs the CLI with a throwaway HOME and WAVE_CREDENTIAL_STORE=file, so the stored-key path
 //     is exercised without touching your OS keychain or ~/.wave.
-//   - The key is never printed: every captured line is scrubbed before it is shown.
+//   - The key is never printed (every captured line is scrubbed) and never passed as an argument:
+//     children get it from the environment or on stdin (`login --api-key-stdin`), so it does not
+//     show up in the process list.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -51,8 +53,12 @@ function record(name, ok, detail) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}  ${scrub(detail)}`);
 }
 
-/** Run the CLI. `withKey:false` removes WAVE_API_KEY so only the stored credential can be used. */
-function wave(cliArgs, { withKey = true, cwd = home } = {}) {
+/**
+ * Run the CLI. `withKey:false` removes WAVE_API_KEY so only the stored credential can be used.
+ * `input` is written to the child's stdin: the only way this script hands the CLI a key other
+ * than the environment, so the key never appears in a process's arguments.
+ */
+function wave(cliArgs, { withKey = true, cwd = home, input, extraEnv = {} } = {}) {
   const env = {
     ...process.env,
     HOME: home,
@@ -60,13 +66,25 @@ function wave(cliArgs, { withKey = true, cwd = home } = {}) {
     WAVE_CREDENTIAL_STORE: "file",
     WAVE_NO_TELEMETRY: "1",
     NO_COLOR: "1",
+    ...extraEnv,
   };
+  // Org/project selection from the caller's shell would change what is being tested: the smoke
+  // checks the key's own organization and the default project.
+  delete env.WAVE_ORG_ID;
+  delete env.WAVE_PROJECT;
   if (!withKey) delete env.WAVE_API_KEY;
   const isJs = BIN.endsWith(".js") || BIN.endsWith(".mjs");
   const cmd = isJs ? process.execPath : BIN;
   const argv = isJs ? [BIN, ...cliArgs] : cliArgs;
-  const r = spawnSync(cmd, argv, { cwd, env, encoding: "utf-8", timeout: 60_000 });
-  return { code: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  // Exit 6 is the gateway's rate limit (429), not a connectivity verdict: back off and retry.
+  for (let attempt = 0; ; attempt++) {
+    const r = spawnSync(cmd, argv, { cwd, env, input, encoding: "utf-8", timeout: 60_000 });
+    if (r.status === 6 && attempt < 3) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000 * (attempt + 1));
+      continue;
+    }
+    return { code: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  }
 }
 
 function json(text) {
@@ -78,7 +96,11 @@ function json(text) {
 }
 
 async function control(path) {
-  const res = await fetch(`${BASE}${path}`, { headers: { accept: "application/json" } });
+  // Bounded like the CLI runs: a stalled API fails the smoke instead of hanging it.
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(20_000),
+  });
   const body = json(await res.text());
   return { status: res.status, body };
 }
@@ -141,21 +163,41 @@ try {
     `exit=${ident.code} code=${ie?.error?.code} req=${ie?.error?.request_id ?? ""}`,
   );
 
-  // Unserved route: says so and exits 11 instead of a plain 404.
+  // Unserved route: says so and exits 11 instead of a plain 404. If the route has since been
+  // served, the command must return a real stream list instead; anything else fails.
   const streams = wave(["-o", "json", "stream", "list"]);
   const se = json(streams.stderr);
+  const unserved = streams.code === 11 && ["ROUTE_NOT_FOUND", "ROUTE_NOT_MAPPED"].includes(se?.error?.code);
+  const servedList = streams.code === 0 && json(streams.stdout) !== null;
   record(
-    "stream list: unserved route reported as not implemented (exit 11) or served (exit 0)",
-    streams.code === 11 || streams.code === 0,
-    `exit=${streams.code} code=${se?.error?.code ?? "none"}`,
+    "stream list: ROUTE_NOT_FOUND/ROUTE_NOT_MAPPED reported as not served (exit 11), or a served JSON list",
+    unserved || servedList,
+    `exit=${streams.code} code=${se?.error?.code ?? "none"} req=${se?.error?.request_id ?? ""}`,
+  );
+
+  // `wave api` uses the same exit-code contract as every command.
+  const rawStreams = wave(["api", "GET", "/v1/streams"]);
+  record(
+    "api GET /v1/streams: exit 11 with the gateway's ROUTE_NOT_FOUND body (or 0 once served)",
+    (rawStreams.code === 11 && /ROUTE_NOT_(FOUND|MAPPED)/.test(rawStreams.stderr)) || rawStreams.code === 0,
+    `exit=${rawStreams.code}`,
   );
 
   const logs = wave(["-o", "json", "logs", "tail"]);
   record("logs tail: stops before sending (exit 11)", logs.code === 11, `exit=${logs.code}`);
 
-  // 2. Stored-key path: `wave login --api-key` into the file store, then use it WITHOUT the env var.
-  const login = wave(["login", "--api-key", KEY], { withKey: false });
-  record("login --api-key (alias) stores the key", login.code === 0, `exit=${login.code} ${login.stdout.trim().split("\n")[0]}`);
+  // Credentials never travel over plain http to a remote host (refused before any request).
+  const insecure = wave(["-o", "json", "billing", "status"], { extraEnv: { WAVE_BASE_URL: "http://api.wave.online" } });
+  record(
+    "WAVE_BASE_URL=http://… (non-loopback) is refused, exit 9",
+    insecure.code === 9 && json(insecure.stderr)?.error?.code === "CONFIG_ERROR",
+    `exit=${insecure.code}`,
+  );
+
+  // 2. Stored-key path: `wave login --api-key-stdin` into the file store (the key goes over stdin,
+  // never argv), then use it WITHOUT the env var.
+  const login = wave(["login", "--api-key-stdin"], { withKey: false, input: `${KEY}\n` });
+  record("login --api-key-stdin (alias) stores the key", login.code === 0, `exit=${login.code} ${login.stdout.trim().split("\n")[0]}`);
 
   const storedWho = wave(["-o", "json", "whoami"], { withKey: false });
   const sw = json(storedWho.stdout);
@@ -169,7 +211,11 @@ try {
 
   const logout = wave(["logout"], { withKey: false });
   const after = wave(["-o", "json", "auth", "status"], { withKey: false });
-  record("logout removes it (auth status exits 1)", logout.code === 0 && after.code === 1 && json(after.stdout)?.authenticated === false, `logout=${logout.code} status=${after.code}`);
+  record(
+    "logout removes it (auth status exits 2, AUTH_REQUIRED)",
+    logout.code === 0 && after.code === 2 && json(after.stdout)?.authenticated === false,
+    `logout=${logout.code} status=${after.code}`,
+  );
 
   // 3. Packaging: init scaffolds a real project from the shipped templates.
   const init = wave(["init", "smoke-app", "--template", "blank", "--no-install"]);
