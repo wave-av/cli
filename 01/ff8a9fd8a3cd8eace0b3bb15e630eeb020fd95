@@ -1,0 +1,53 @@
+.buildkite/scripts/smoke.sh
+  s_e2f57c37a9ddf1::t_f417009a806ccb 1-29,34-57
+  s_e2f57c37a9ddf1::t_e302d3b2976bdd 30-33
+.buildkite/scripts/license-truth.sh
+  s_e2f57c37a9ddf1::t_254c680c29981d 1-15
+.buildkite/scripts/unit.sh
+  s_e2f57c37a9ddf1::t_9048f2f3121107 1-17
+.buildkite/scripts/upload.sh
+  s_e2f57c37a9ddf1::t_6ed2e5ce85693b 3-5
+  s_e2f57c37a9ddf1::t_af3ff9e620aaba 1-2
+  s_e2f57c37a9ddf1::t_71cd7a61ae02c7 6-8
+  s_6e9d53f78c92c0::t_3b2ea6db623631 9-10
+.buildkite/README.md
+  s_e2f57c37a9ddf1::t_038b57ab4376b3 1-52
+.buildkite/scripts/governance-enforce.sh
+  s_e2f57c37a9ddf1::t_a08f3d78c7ac81 1-58
+.buildkite/scripts/lib/npm-install.sh
+  s_e2f57c37a9ddf1::t_4fca6cf90808f4 2-17
+  s_e2f57c37a9ddf1::t_fd4325e1bdeee4 1
+  s_e2f57c37a9ddf1::t_6e3a365d6d8788 18-20
+  s_6e9d53f78c92c0::t_db047de1574859 21-42
+.buildkite/pipeline.yml
+  s_e2f57c37a9ddf1::t_ed72c00d92c6bb 1-75
+.buildkite/scripts/lib/common.sh
+  s_e2f57c37a9ddf1::t_8ed341f3eaf5a3 6-89
+  s_e2f57c37a9ddf1::t_63999b54fea274 3-5
+  s_e2f57c37a9ddf1::t_8618ce4def8560 90
+  s_6e9d53f78c92c0::t_9b9d574eac2005 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "01ff8a9fd8a3cd8eace0b3bb15e630eeb020fd95",
+  "prompts": {},
+  "sessions": {
+    "s_6e9d53f78c92c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-adc16aee053e4737e",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    },
+    "s_e2f57c37a9ddf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "acf06ca5-9a82-40ec-885d-ec8483abd1d3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
