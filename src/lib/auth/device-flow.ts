@@ -23,6 +23,15 @@ import {
 
 /** Additional interval (ms) added when the server requests slow_down */
 const SLOW_DOWN_INCREMENT_MS = 5000;
+/** RFC 8628 §3.2: the polling interval a client uses when the grant does not give one. */
+const DEFAULT_INTERVAL_S = 5;
+/**
+ * How long to poll a grant that arrives without a usable expires_in. The spec (agentAuthDevice)
+ * requires the field; this only bounds the wait if a response ever omits it.
+ */
+const DEFAULT_EXPIRES_IN_S = 900;
+
+const isPositiveFinite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
 
 export interface DeviceFlowOptions {
   /** Open the verification URL in a browser (default true). */
@@ -129,8 +138,11 @@ export async function pollForToken(
 ): Promise<CeremonyTokens> {
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const log = options.log ?? ((line: string) => console.log(line));
-  const deadline = Date.now() + expiresIn * 1000;
-  let pollIntervalMs = Math.max(1, interval) * 1000;
+  // RFC 8628 §3.2: `interval` is optional (default 5s). A missing or unusable value must not turn
+  // into NaN: setTimeout(NaN) fires at once (a tight poll loop), and a NaN deadline ends the loop
+  // before the first poll. `expires_in` is required, but the same guard costs nothing.
+  const deadline = Date.now() + (isPositiveFinite(expiresIn) ? expiresIn : DEFAULT_EXPIRES_IN_S) * 1000;
+  let pollIntervalMs = Math.max(1, isPositiveFinite(interval) ? interval : DEFAULT_INTERVAL_S) * 1000;
 
   while (Date.now() < deadline) {
     await sleep(pollIntervalMs);

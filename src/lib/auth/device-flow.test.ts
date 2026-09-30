@@ -104,6 +104,32 @@ describe("pollForToken", () => {
     expect(sleeps).toEqual([1000, 1000, 6000]);
   });
 
+  it("waits the RFC 8628 default 5s, and still polls, when the grant has no usable interval or expires_in", async () => {
+    // Review finding (PR #86): Math.max(1, undefined) is NaN, so setTimeout(NaN) fired at once (a
+    // tight poll loop), and a NaN deadline ended the loop before the first poll ("expired").
+    for (const [interval, expiresIn] of [
+      [undefined, undefined],
+      [Number.NaN, Number.NaN],
+      [0, -1],
+    ] as Array<[unknown, unknown]>) {
+      const responses = [
+        json(400, { error: "authorization_pending" }),
+        json(200, { access_token: "at_2", token_type: "Bearer", expires_in: 3600 }),
+      ];
+      const fetchImpl = vi.fn(async () => responses.shift()!);
+      const sleeps: number[] = [];
+      const tokens = await pollForToken(BASE, "dev_x", interval as number, expiresIn as number, {
+        ...quiet,
+        fetchImpl,
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+      });
+      expect(tokens.access_token).toBe("at_2");
+      expect(sleeps).toEqual([5000, 5000]);
+    }
+  });
+
   it("stops on access_denied and expired_token", async () => {
     await expect(
       pollForToken(BASE, "d", 1, 60, { ...quiet, fetchImpl: vi.fn(async () => json(400, { error: "access_denied" })) }),
