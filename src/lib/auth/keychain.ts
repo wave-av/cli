@@ -153,6 +153,7 @@ async function setSecret(account: string, value: string): Promise<void> {
   noteFileFallback();
   await updateCredentials((creds) => {
     creds[account] = value;
+    return true;
   });
 }
 
@@ -172,7 +173,9 @@ async function deleteSecret(account: string): Promise<void> {
     return;
   }
   await updateCredentials((creds) => {
+    if (!(account in creds)) return false;
     delete creds[account];
+    return true;
   });
 }
 
@@ -208,7 +211,9 @@ export async function deleteAllKeys(): Promise<void> {
     return;
   }
   await updateCredentials((creds) => {
-    for (const account of Object.keys(creds)) delete creds[account];
+    const accounts = Object.keys(creds);
+    for (const account of accounts) delete creds[account];
+    return accounts.length > 0;
   });
 }
 
@@ -263,11 +268,11 @@ async function loadCredentials(): Promise<Record<string, string>> {
  * mode 0600. Without the lock, two processes (a token refresh and a login to another project)
  * could each read the same map and the later write would drop the other's new secret.
  */
-async function updateCredentials(mutate: (creds: Record<string, string>) => void): Promise<void> {
+async function updateCredentials(mutate: (creds: Record<string, string>) => boolean): Promise<void> {
   const file = credentialsFile();
   await withFileLock(file, async () => {
     const creds = await loadCredentials();
-    mutate(creds);
+    if (!mutate(creds)) return; // nothing changed: leave the file (or its absence) alone
     await writeFileAtomic(file, JSON.stringify(creds, null, 2), 0o600);
   });
 }

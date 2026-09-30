@@ -139,6 +139,12 @@ describe("file credential store (WAVE_CREDENTIAL_STORE=file)", () => {
     expect(readdirSync(join(home, ".wave")).sort()).toEqual(["credentials.json"]);
   });
 
+  it("logout with nothing stored writes nothing", async () => {
+    await deleteApiKey("default");
+    await deleteAllKeys();
+    expect(existsSync(join(home, ".wave", "credentials.json"))).toBe(false);
+  });
+
   it("a corrupt credentials file is reported and never overwritten", async () => {
     const dir = join(home, ".wave");
     mkdirSync(dir, { recursive: true });
