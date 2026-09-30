@@ -25,7 +25,8 @@ export function registerWebhookSubscriptionCommands(program: Command): void {
     .description("List webhook subscriptions")
     .action(
       wrapCommand(async () => {
-        const result = await gatewayFetch("/v1/webhook-subscriptions", { project: program.opts().project });
+        const { project, org } = program.opts();
+        const result = await gatewayFetch("/v1/webhook-subscriptions", { project, org });
         formatOutput(result, program.opts());
       }),
     );
@@ -40,8 +41,10 @@ export function registerWebhookSubscriptionCommands(program: Command): void {
         const body: Record<string, unknown> = {};
         if (opts.url) body.url = opts.url;
         if (opts.events) body.events = String(opts.events).split(",").map((s: string) => s.trim()).filter(Boolean);
+        const { project, org } = program.opts();
         const result = await gatewayFetch("/v1/webhook-subscriptions", {
-          project: program.opts().project,
+          project,
+          org,
           method: "POST",
           body,
         });
@@ -63,8 +66,10 @@ export function registerIdentityCommands(program: Command): void {
       wrapCommand(async (agent: string) => {
         // The served contract is GET with ?agent=<id> (1.0.10 sent POST with a JSON body, which
         // the gateway refuses as ROUTE_NOT_MAPPED).
+        const { project, org } = program.opts();
         const result = await gatewayFetch("/v1/identity/resolve", {
-          project: program.opts().project,
+          project,
+          org,
           query: { agent },
         });
         formatOutput(result, program.opts());

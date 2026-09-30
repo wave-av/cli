@@ -59,8 +59,9 @@ export function registerLinkCommands(program: Command): void {
           throw new AuthRequiredError();
         }
 
-        // 2. Which org does this key act for?
-        const organizationId = await discoverOrganizationId(credentials);
+        // 2. Which org does this key act for? Ask without the saved/env org header: after a key
+        // change, the cached org is exactly what this command exists to replace.
+        const organizationId = await discoverOrganizationId({ ...credentials, organizationId: undefined });
         if (!organizationId) {
           throw new Error(
             "Could not determine your organization: this key can read none of /v1/billing, " +

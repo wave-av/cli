@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { startDeviceAuth, pollForToken } from "./device-flow.js";
+import { WaveError } from "@wave-av/sdk";
+import { exitCodeFor } from "../errors.js";
+import { EXIT_CODES } from "../exit-codes.js";
+import { isSameOriginWebUrl, startDeviceAuth, pollForToken } from "./device-flow.js";
 
 /**
  * 1.0.10 posted to /api/oauth/device/authorize|token, which the gateway answers 404
@@ -41,6 +44,32 @@ describe("startDeviceAuth", () => {
       json(404, { error: { code: "ROUTE_NOT_FOUND", message: "No WAVE capability is served at this path." } }),
     );
     await expect(startDeviceAuth(BASE, { ...quiet, fetchImpl })).rejects.toThrow(/404 ROUTE_NOT_FOUND/);
+  });
+
+  it("keeps the failure structured (WaveError: code + status), so the exit code maps (ROUTE_NOT_FOUND -> 11)", async () => {
+    const fetchImpl = vi.fn(async () => json(404, { error: { code: "ROUTE_NOT_FOUND", message: "not served" } }));
+    const err = await startDeviceAuth(BASE, { ...quiet, fetchImpl }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WaveError);
+    expect(err).toMatchObject({ code: "ROUTE_NOT_FOUND", statusCode: 404 });
+    expect(exitCodeFor(err)).toBe(EXIT_CODES.NOT_IMPLEMENTED);
+  });
+
+  it("a network failure stays a plain error with context", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    const err = await startDeviceAuth(BASE, { ...quiet, fetchImpl }).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(WaveError);
+    expect(String((err as Error).message)).toMatch(/Device authorization request failed: fetch failed/);
+  });
+});
+
+describe("isSameOriginWebUrl (what the browser may be pointed at)", () => {
+  it("opens only http(s) pages on the API host", () => {
+    expect(isSameOriginWebUrl("https://api.wave.online/agent/auth/verify?code=AB", BASE)).toBe(true);
+    expect(isSameOriginWebUrl("https://evil.example/verify", BASE)).toBe(false);
+    expect(isSameOriginWebUrl("file:///etc/passwd", BASE)).toBe(false);
+    expect(isSameOriginWebUrl("not a url", BASE)).toBe(false);
   });
 });
 

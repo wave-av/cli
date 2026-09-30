@@ -15,8 +15,10 @@ export function registerListenCommands(program: Command): void {
   program
     .command("listen")
     .description("Listen for webhook events from WAVE (not yet served by the API)")
-    .option("--forward-to <url>", "URL to forward events to", "http://localhost:3000/webhooks/wave")
-    .option("--events <pattern>", "Event pattern to listen for (e.g., stream.*)")
+    // Kept so scripts that pass them get the "not available" answer (exit 11) rather than an
+    // unknown-option error; they have no effect until the API serves an event stream.
+    .option("--forward-to <url>", "Reserved: URL to forward events to (no effect yet)")
+    .option("--events <pattern>", "Reserved: event pattern, e.g. stream.* (no effect yet)")
     .action(
       wrapCommand(async () => {
         throw new CapabilityUnavailableError(LISTEN_UNAVAILABLE, "listen");

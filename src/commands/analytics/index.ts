@@ -54,8 +54,10 @@ export function registerAnalyticsCommands(program: Command): void {
     }
     cmd.action(
       wrapCommand(async (opts: { from?: string; to?: string; limit?: string }) => {
+        const { project, org } = program.opts();
         const result = await gatewayFetch(route.path, {
-          project: program.opts().project,
+          project,
+          org,
           query: { from: opts.from, to: opts.to, limit: opts.limit },
         });
         formatOutput(result, program.opts());

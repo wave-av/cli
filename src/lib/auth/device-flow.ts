@@ -11,7 +11,9 @@
 
 import open from "open";
 import chalk from "chalk";
+import { sanitizeForTerminal } from "../terminal.js";
 import {
+  WaveError,
   startAgentCeremony,
   pollAgentCeremony,
   isCeremonyPending,
@@ -33,10 +35,38 @@ export interface DeviceFlowOptions {
   log?: (line: string) => void;
 }
 
+type CeremonyErrorLike = { statusCode?: number; status?: number; code?: string; message?: string; requestId?: string };
+
 function describeError(err: unknown): string {
-  const e = err as { status?: number; code?: string; message?: string };
-  const parts = [e.status ? `${e.status}` : "", e.code ?? "", e.message ?? String(err)].filter(Boolean);
+  const e = (err ?? {}) as CeremonyErrorLike;
+  const status = e.statusCode ?? e.status;
+  const parts = [status ? `${status}` : "", e.code ?? "", e.message ?? String(err)].filter(Boolean);
   return parts.join(" ");
+}
+
+/**
+ * Add context to a ceremony failure without losing what the exit code depends on. The SDK's
+ * ceremony helpers throw an Error carrying `status` and `code` (a WaveError, with `statusCode`, in
+ * newer SDKs); either becomes a WaveError here, so ROUTE_NOT_FOUND still exits 11 and a 401 exits 2.
+ * A failure with no HTTP status (the network) stays a plain Error.
+ */
+function withContext(context: string, err: unknown): Error {
+  const e = (err ?? {}) as CeremonyErrorLike;
+  const status = e.statusCode ?? e.status;
+  if (typeof status === "number") {
+    return new WaveError(`${context}: ${describeError(err)}`, e.code ?? `HTTP_${status}`, status, e.requestId);
+  }
+  return new Error(`${context}: ${describeError(err)}`);
+}
+
+/** True when `url` is an http(s) URL on the same origin as `baseUrl` (the validated API host). */
+export function isSameOriginWebUrl(url: string, baseUrl: string): boolean {
+  try {
+    const target = new URL(url);
+    return (target.protocol === "https:" || target.protocol === "http:") && target.origin === new URL(baseUrl).origin;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -49,26 +79,32 @@ export async function startDeviceAuth(baseUrl: string, options: DeviceFlowOption
   try {
     data = await startAgentCeremony({ baseUrl, fetchImpl: options.fetchImpl });
   } catch (err) {
-    throw new Error(`Device authorization request failed: ${describeError(err)}`);
+    throw withContext("Device authorization request failed", err);
   }
 
   log("");
   log(chalk.bold("  Open this URL in your browser to authenticate:"));
   log("");
-  log(`    ${chalk.cyan.underline(data.verification_uri)}`);
+  log(`    ${chalk.cyan.underline(sanitizeForTerminal(data.verification_uri))}`);
   log("");
   log(chalk.bold("  Enter this code when prompted:"));
   log("");
-  log(`    ${chalk.bold.yellow(data.user_code)}`);
+  log(`    ${chalk.bold.yellow(sanitizeForTerminal(data.user_code))}`);
   log("");
 
   if (options.openBrowser !== false) {
     const verificationUrl = data.verification_uri_complete ?? data.verification_uri;
-    try {
-      await open(verificationUrl);
-      log(chalk.gray("  Browser opened automatically."));
-    } catch {
-      log(chalk.gray("  Could not open browser automatically. Please open the URL manually."));
+    // `open` hands the URL to the OS, which launches whatever handles its scheme: only a web page
+    // on the API host's origin is opened automatically.
+    if (!isSameOriginWebUrl(verificationUrl, baseUrl)) {
+      log(chalk.yellow("  Not opening the verification URL automatically: it is not on the API host."));
+    } else {
+      try {
+        await open(verificationUrl);
+        log(chalk.gray("  Browser opened automatically."));
+      } catch {
+        log(chalk.gray("  Could not open browser automatically. Please open the URL manually."));
+      }
     }
   }
 
@@ -116,7 +152,7 @@ export async function pollForToken(
       if (code === "access_denied") {
         throw new Error("Authentication was denied. Please try again.");
       }
-      throw new Error(`Unexpected error during device flow: ${describeError(err)}`);
+      throw withContext("Unexpected error during device flow", err);
     }
   }
 

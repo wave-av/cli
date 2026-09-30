@@ -1,7 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { loadConfig } from "../../lib/config/manager.js";
+import { getConfigPath, loadConfig } from "../../lib/config/manager.js";
+import { getDefaultConfig } from "../../lib/config/schema.js";
 import { getApiKey } from "../../lib/auth/keychain.js";
+import { resolveProjectName } from "../../lib/auth/credentials.js";
+import type { WaveConfig } from "../../types/index.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
 import { detectEnvironment } from "../../lib/environment.js";
@@ -32,29 +35,33 @@ export function registerDoctorCommands(program: Command): void {
           fix: major < 18 ? "Install Node.js 18+: https://nodejs.org" : undefined,
         });
 
-        // 2. Config file
+        // 2. Config file. Loaded once; a file the CLI refuses to use is a failed check, reported
+        // with the reason, and the remaining checks run against defaults.
+        let config: WaveConfig;
         try {
-          const config = await loadConfig();
+          config = await loadConfig();
           checks.push({
             name: "Config",
             status: "pass",
             message: `Loaded (project: ${config.currentProject})`,
           });
-        } catch {
+        } catch (err) {
+          config = getDefaultConfig();
           checks.push({
             name: "Config",
-            status: "warn",
-            message: "Could not load config (using defaults)",
-            fix: "wave config list",
+            status: "fail",
+            message: err instanceof Error ? err.message : String(err),
+            fix: `Fix or move aside ${getConfigPath()}`,
           });
         }
 
-        // 3. Authentication
-        const config = await loadConfig();
+        // 3. Authentication, for the project every other command would use (--project,
+        // WAVE_PROJECT, then the current project).
+        const project = resolveProjectName(config, program.opts().project);
         const envKey = process.env["WAVE_API_KEY"];
         // WAVE_API_KEY wins (same order as every command), so the keychain is only consulted
         // without it: a locked keychain must not stall a diagnostic that does not need it.
-        const apiKey = envKey ? null : await getApiKey(config.currentProject);
+        const apiKey = envKey ? null : await getApiKey(project);
         if (envKey) {
           checks.push({
             name: "Auth",
@@ -67,13 +74,13 @@ export function registerDoctorCommands(program: Command): void {
           checks.push({
             name: "Auth",
             status: "pass",
-            message: `API key stored for "${config.currentProject}" (${maskSecret(apiKey)})`,
+            message: `API key stored for "${project}" (${maskSecret(apiKey)})`,
           });
         } else {
           checks.push({
             name: "Auth",
             status: "fail",
-            message: "No API key found",
+            message: `No API key found for project "${project}"`,
             fix: "wave auth login  (or export WAVE_API_KEY=...)",
           });
         }

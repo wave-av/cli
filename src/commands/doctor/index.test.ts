@@ -10,6 +10,7 @@ import { getDefaultConfig } from "../../lib/config/schema.js";
 
 vi.mock("../../lib/config/manager.js", () => ({
   loadConfig: vi.fn(),
+  getConfigPath: vi.fn(() => "~/.wave/config.json"),
 }));
 vi.mock("../../lib/auth/keychain.js", () => ({
   getApiKey: vi.fn(),
@@ -23,9 +24,70 @@ function buildProgram(): Command {
   const program = new Command();
   program.exitOverride();
   program.option("-o, --output <format>", "", "json");
+  program.option("--project <name>");
   registerDoctorCommands(program);
   return program;
 }
+
+type Check = { name: string; status: string; message: string; fix?: string };
+
+/** Run doctor with -o json and return its checks. */
+async function runDoctor(...args: string[]): Promise<Check[]> {
+  const out: string[] = [];
+  vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void out.push(a.map(String).join(" ")));
+  await buildProgram().parseAsync(["node", "wave", ...args, "doctor"]);
+  return JSON.parse(out.join("\n")) as Check[];
+}
+
+describe("wave doctor: which credential it checks", () => {
+  beforeEach(() => {
+    process.exitCode = undefined;
+    vi.mocked(getApiKey).mockReset();
+    vi.stubEnv("WAVE_API_KEY", "");
+    vi.stubEnv("WAVE_PROJECT", "");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    process.exitCode = undefined;
+  });
+
+  it("with WAVE_API_KEY set, never reads the keychain, and needs no saved project", async () => {
+    vi.stubEnv("WAVE_API_KEY", "wv_fake_envkeyabcdefgh");
+    vi.mocked(loadConfig).mockResolvedValue(getDefaultConfig());
+    const checks = await runDoctor();
+    expect(getApiKey).not.toHaveBeenCalled();
+    expect(checks.find((c) => c.name === "Auth")?.status).toBe("pass");
+    expect(checks.find((c) => c.name === "Projects")).toMatchObject({ status: "pass", message: expect.stringMatching(/not needed/) });
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("checks the project --project / WAVE_PROJECT select, not always currentProject", async () => {
+    vi.mocked(loadConfig).mockResolvedValue(getDefaultConfig());
+    vi.mocked(getApiKey).mockImplementation(async (p: string) => (p === "production" ? "wv_fake_prodkey1234" : null));
+    const flag = await runDoctor("--project", "production");
+    expect(getApiKey).toHaveBeenLastCalledWith("production");
+    expect(flag.find((c) => c.name === "Auth")?.status).toBe("pass");
+
+    vi.stubEnv("WAVE_PROJECT", "staging");
+    const env = await runDoctor();
+    expect(getApiKey).toHaveBeenLastCalledWith("staging");
+    expect(env.find((c) => c.name === "Auth")).toMatchObject({ status: "fail", message: expect.stringMatching(/"staging"/) });
+  });
+
+  it("reports a config file it refuses to use as a failed check instead of crashing", async () => {
+    vi.mocked(loadConfig).mockRejectedValue(new Error("~/.wave/config.json is not valid JSON"));
+    vi.mocked(getApiKey).mockResolvedValue("wv_fake_storedkey123");
+    const checks = await runDoctor();
+    expect(checks.find((c) => c.name === "Config")).toMatchObject({
+      status: "fail",
+      message: expect.stringMatching(/not valid JSON/),
+      fix: expect.stringMatching(/config\.json/),
+    });
+    expect(process.exitCode).toBe(1);
+  });
+});
 
 describe("wave doctor exit codes", () => {
   beforeEach(() => {

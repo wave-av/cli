@@ -1,8 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { AuthRequiredError, wrapCommand } from "../../lib/errors.js";
+import { AuthRequiredError, exitCodeFor, wrapCommand } from "../../lib/errors.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { resolveCredentials } from "../../lib/auth/credentials.js";
+import { toGatewayError } from "../../lib/gateway.js";
+import { sanitizeForTerminal } from "../../lib/terminal.js";
 import { cliUserAgent } from "../../lib/version.js";
 
 /**
@@ -37,7 +39,7 @@ export function registerApiCommands(program: Command): void {
         // Same resolution as every other command: WAVE_API_KEY first, then the stored key; the
         // host is WAVE_BASE_URL / the project's baseUrl / https://api.wave.online. 1.0.10
         // defaulted to https://wave.online (the marketing site) and ignored WAVE_API_KEY.
-        const creds = await resolveCredentials({ project: program.opts().project });
+        const creds = await resolveCredentials({ project: program.opts().project, org: program.opts().org });
         if (!creds) {
           throw new AuthRequiredError();
         }
@@ -50,6 +52,8 @@ export function registerApiCommands(program: Command): void {
           "User-Agent": cliUserAgent(),
           "X-Wave-Source": "cli",
         };
+        // --org / WAVE_ORG_ID / the saved org, as for every other command (-H can still override).
+        if (creds.organizationId) headers["X-Organization-Id"] = creds.organizationId;
 
         // Add custom headers
         for (const h of opts.header as string[]) {
@@ -70,25 +74,36 @@ export function registerApiCommands(program: Command): void {
 
         const res = await fetch(url, fetchOpts);
         const contentType = res.headers.get("content-type") ?? "";
-
-        if (contentType.includes("application/json")) {
-          const data = await res.json();
-
-          if (!res.ok) {
-            console.error(chalk.red(`${res.status} ${res.statusText}`));
-            console.error(JSON.stringify(data, null, 2));
-            process.exit(1);
+        const text = await res.text();
+        let data: unknown = text;
+        if (contentType.includes("application/json") && text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = text;
           }
+        }
 
-          formatOutput(data, program.opts());
+        if (!res.ok) {
+          // Like `gh api`, show the response itself, but exit with the code every other command
+          // uses for the same failure (401 -> 2, 403 -> 7, ROUTE_NOT_FOUND/ROUTE_NOT_MAPPED -> 11
+          // "not served"), not a blanket 1, so scripts can tell the cases apart.
+          const failure = toGatewayError(
+            res.status,
+            res.statusText,
+            typeof data === "string" ? { message: data.slice(0, 500) } : data,
+            res.headers.get("x-request-id") ?? undefined,
+          );
+          console.error(chalk.red(`${res.status} ${res.statusText}`));
+          console.error(sanitizeForTerminal(typeof data === "string" ? data : JSON.stringify(data, null, 2)));
+          process.exitCode = exitCodeFor(failure);
+          return;
+        }
+
+        if (typeof data === "string") {
+          console.log(data);
         } else {
-          const text = await res.text();
-          if (!res.ok) {
-            console.error(chalk.red(`${res.status} ${res.statusText}`));
-            console.error(text);
-            process.exit(1);
-          }
-          console.log(text);
+          formatOutput(data, program.opts());
         }
       }),
     );

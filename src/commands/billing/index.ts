@@ -46,7 +46,8 @@ export function registerBillingCommands(program: Command): void {
     .description("Show current billing status and plan (GET /v1/billing)")
     .action(
       wrapCommand(async () => {
-        const result = await gatewayFetch("/v1/billing", { project: program.opts().project });
+        const { project, org } = program.opts();
+        const result = await gatewayFetch("/v1/billing", { project, org });
         formatOutput(result, program.opts());
       }),
     );
@@ -60,8 +61,10 @@ export function registerBillingCommands(program: Command): void {
     .action(
       wrapCommand(async (opts: { period: string; from?: string; to?: string }) => {
         const range = periodRange(opts.period);
+        const { project, org } = program.opts();
         const result = await gatewayFetch("/v1/billing/usage", {
-          project: program.opts().project,
+          project,
+          org,
           query: { from: opts.from ?? range.from, to: opts.to ?? range.to },
         });
         formatOutput(result, program.opts());
