@@ -1,0 +1,19 @@
+scripts/smoke/live-connectivity.mjs
+  s_0ef022f8f2b42c::t_bb96b14b7c0556 33-35,58-71,94,180-181,185,187,192-196,198-199,254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "15372f88f4788070f102553ae800699257d89b21",
+  "prompts": {},
+  "sessions": {
+    "s_0ef022f8f2b42c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aef45c7380cdc6dbb",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
