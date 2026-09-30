@@ -72,7 +72,7 @@ describe("exit codes", () => {
 
 describe("terminal output of API-controlled text", () => {
   it("strips ESC/BEL/C1 and bidi overrides, keeps tab and newline", () => {
-    expect(sanitizeForTerminal("a\u001b[31mred\u001b[0m\u0007b\u009bc‮d\te\nf")).toBe("a[31mred[0mbcd\te\nf");
+    expect(sanitizeForTerminal("a\u001b[31mred\u001b[0m\u0007b\u009bc\u202Ed\u2066e\u2069\te\nf")).toBe("a[31mred[0mbcde\te\nf");
     expect(sanitizeForTerminal(undefined)).toBe("");
   });
 
