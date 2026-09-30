@@ -5,6 +5,7 @@ import type { TimeRange } from "@wave-av/sdk/pulse";
 import { getClient } from "../../lib/api-client.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { gatewayFetch } from "../../lib/gateway.js";
 
 /**
  * The CLI has always documented `--period` as hour|day|week|month, while the SDK's
@@ -29,8 +30,38 @@ function toTimeRange(period: string): TimeRange {
   return mapped;
 }
 
+/**
+ * Account-level analytics routes the gateway serves today (GET, scope analytics:read). Each takes
+ * optional ISO 8601 `from`/`to`; top-content also takes `limit` (1-100).
+ */
+const ACCOUNT_ANALYTICS = [
+  { name: "overview", path: "/v1/analytics/overview", description: "Account-level analytics overview" },
+  { name: "engagement", path: "/v1/analytics/engagement", description: "Account-wide engagement analytics" },
+  { name: "top-content", path: "/v1/analytics/top-content", description: "Top content by usage" },
+] as const;
+
 export function registerAnalyticsCommands(program: Command): void {
   const analytics = program.command("analytics").description("Streaming analytics and insights");
+
+  for (const route of ACCOUNT_ANALYTICS) {
+    const cmd = analytics
+      .command(route.name)
+      .description(`${route.description} (GET ${route.path})`)
+      .option("--from <iso>", "Range start, ISO 8601 (default: 30 days before --to)")
+      .option("--to <iso>", "Range end, ISO 8601 (default: now)");
+    if (route.name === "top-content") {
+      cmd.option("--limit <n>", "Maximum results (1-100)", "20");
+    }
+    cmd.action(
+      wrapCommand(async (opts: { from?: string; to?: string; limit?: string }) => {
+        const result = await gatewayFetch(route.path, {
+          project: program.opts().project,
+          query: { from: opts.from, to: opts.to, limit: opts.limit },
+        });
+        formatOutput(result, program.opts());
+      }),
+    );
+  }
 
   analytics
     .command("viewers")

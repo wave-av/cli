@@ -1,39 +1,39 @@
 import { Command } from "commander";
-import chalk from "chalk";
 import { formatOutput } from "../../lib/output/index.js";
-import { wrapCommand } from "../../lib/errors.js";
-import { loadConfig } from "../../lib/config/manager.js";
-import { getApiKey } from "../../lib/auth/keychain.js";
+import { wrapCommand, CapabilityUnavailableError } from "../../lib/errors.js";
+import { gatewayFetch } from "../../lib/gateway.js";
 
-async function billingFetch(
-  path: string,
-  opts?: { method?: string; body?: unknown },
-): Promise<unknown> {
-  const config = await loadConfig();
-  const project = config.projects[config.currentProject];
-  const baseUrl = project?.baseUrl ?? process.env["WAVE_BASE_URL"] ?? "https://wave.online";
-  const apiKey = await getApiKey(config.currentProject);
+/**
+ * Billing reads go to the gateway's served routes on api.wave.online:
+ *   GET /v1/billing         -> { organizationId, billingAccount, plan, subscription, paymentMethod }
+ *   GET /v1/billing/usage   -> { organizationId, period:{from,to}, usage[], total }   (?from&to)
+ *
+ * 1.0.10 called https://wave.online/api/billing/* (the marketing host, 404 ROUTE_NOT_FOUND on every
+ * path) with a keychain-only key. invoices / limits / portal / upgrade have no API route today, so
+ * they stop before any network call instead of failing with an opaque 404.
+ */
 
-  if (!apiKey) {
-    throw new Error(`No API key found. Run ${chalk.bold("wave login")} to authenticate.`);
+const BILLING_UNSERVED =
+  "is not available from the CLI yet: the WAVE API has no route for it. " +
+  "`wave billing status` (plan, subscription, payment method) and `wave billing usage` are served.";
+
+function unavailable(command: string): never {
+  throw new CapabilityUnavailableError(`\`wave billing ${command}\` ${BILLING_UNSERVED}`, "billing");
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** `--period current|previous` -> the from/to range GET /v1/billing/usage takes (UTC months). */
+export function periodRange(period: string, now = new Date()): { from?: string; to?: string } {
+  if (period === "current") return {}; // server default: start of this month .. today
+  if (period === "previous") {
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+    return { from: isoDate(from), to: isoDate(to) };
   }
-
-  const res = await fetch(`${baseUrl}${path}`, {
-    method: opts?.method ?? "GET",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "X-Wave-Source": "cli",
-    },
-    body: opts?.body ? JSON.stringify(opts.body) : undefined,
-  });
-
-  if (!res.ok) {
-    const error = (await res.json().catch(() => ({}))) as { message?: string };
-    throw new Error(error.message ?? `Billing API error: ${res.status} ${res.statusText}`);
-  }
-
-  return res.json();
+  throw new Error(`Invalid --period "${period}". Expected one of: current, previous.`);
 }
 
 export function registerBillingCommands(program: Command): void {
@@ -43,68 +43,49 @@ export function registerBillingCommands(program: Command): void {
 
   billing
     .command("status")
-    .description("Show current billing status and plan")
+    .description("Show current billing status and plan (GET /v1/billing)")
     .action(
       wrapCommand(async () => {
-        const result = await billingFetch("/api/billing/status");
+        const result = await gatewayFetch("/v1/billing", { project: program.opts().project });
         formatOutput(result, program.opts());
       }),
     );
 
   billing
     .command("usage")
-    .description("Show current usage metrics")
+    .description("Show billed usage for a date range (GET /v1/billing/usage)")
     .option("--period <period>", "Billing period (current, previous)", "current")
+    .option("--from <date>", "Range start, YYYY-MM-DD (overrides --period)")
+    .option("--to <date>", "Range end, YYYY-MM-DD (overrides --period)")
     .action(
-      wrapCommand(async (opts) => {
-        const result = await billingFetch(`/api/billing/usage?period=${opts.period}`);
+      wrapCommand(async (opts: { period: string; from?: string; to?: string }) => {
+        const range = periodRange(opts.period);
+        const result = await gatewayFetch("/v1/billing/usage", {
+          project: program.opts().project,
+          query: { from: opts.from ?? range.from, to: opts.to ?? range.to },
+        });
         formatOutput(result, program.opts());
       }),
     );
 
   billing
     .command("invoices")
-    .description("List billing invoices")
+    .description("List billing invoices (not yet served by the API)")
     .option("--limit <n>", "Maximum results", "10")
-    .action(
-      wrapCommand(async (opts) => {
-        const result = await billingFetch(`/api/billing/invoices?limit=${opts.limit}`);
-        formatOutput(result, program.opts());
-      }),
-    );
+    .action(wrapCommand(async () => unavailable("invoices")));
 
   billing
     .command("limits")
-    .description("Show current usage limits")
-    .action(
-      wrapCommand(async () => {
-        const result = await billingFetch("/api/billing/limits");
-        formatOutput(result, program.opts());
-      }),
-    );
+    .description("Show current usage limits (not yet served by the API)")
+    .action(wrapCommand(async () => unavailable("limits")));
 
   billing
     .command("portal")
-    .description("Open the billing portal in your browser")
-    .action(
-      wrapCommand(async () => {
-        const result = (await billingFetch("/api/billing/portal", {
-          method: "POST",
-        })) as { url: string };
-        const open = (await import("open")).default;
-        await open(result.url);
-        console.log(chalk.green("Billing portal opened in your browser."));
-      }),
-    );
+    .description("Open the billing portal in your browser (not yet served by the API)")
+    .action(wrapCommand(async () => unavailable("portal")));
 
   billing
     .command("upgrade")
-    .description("View available upgrade options")
-    .action(
-      wrapCommand(async () => {
-        const result = await billingFetch("/api/billing/plans");
-        formatOutput(result, program.opts());
-        console.log(chalk.gray("\nTo upgrade, visit the billing portal: wave billing portal"));
-      }),
-    );
+    .description("View available upgrade options (not yet served by the API)")
+    .action(wrapCommand(async () => unavailable("upgrade")));
 }

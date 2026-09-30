@@ -1,10 +1,29 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { wrapCommand } from "../../lib/errors.js";
+import { AuthRequiredError, wrapCommand } from "../../lib/errors.js";
 import { formatOutput } from "../../lib/output/index.js";
-import { getApiKey } from "../../lib/auth/keychain.js";
-import { loadConfig } from "../../lib/config/manager.js";
+import { resolveCredentials } from "../../lib/auth/credentials.js";
 import { cliUserAgent } from "../../lib/version.js";
+
+/**
+ * Build the request URL for `wave api`. Relative paths resolve against the configured API host.
+ * An absolute URL is accepted only on that same origin: the command attaches your WAVE credential
+ * as a bearer token, and it must never be sent to an arbitrary host a typo or a pasted link names.
+ */
+export function buildApiUrl(baseUrl: string, path: string): URL {
+  const base = new URL(baseUrl);
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
+    const target = new URL(path);
+    if (target.origin !== base.origin) {
+      throw new Error(
+        `Refusing to send your WAVE credential to ${target.origin}. \`wave api\` only calls the ` +
+          `configured API host (${base.origin}); set WAVE_BASE_URL to target another WAVE environment.`,
+      );
+    }
+    return target;
+  }
+  return new URL(`${baseUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`);
+}
 
 export function registerApiCommands(program: Command): void {
   program
@@ -15,24 +34,21 @@ export function registerApiCommands(program: Command): void {
     .option("--paginate", "Auto-paginate and collect all results")
     .action(
       wrapCommand(async (method: string, path: string, opts) => {
-        const config = await loadConfig();
-        const project = config.currentProject || "default";
-        const apiKey = await getApiKey(project);
-
-        if (!apiKey) {
-          console.error(chalk.red("Not authenticated. Run `wave auth login` first."));
-          process.exit(1);
+        // Same resolution as every other command: WAVE_API_KEY first, then the stored key; the
+        // host is WAVE_BASE_URL / the project's baseUrl / https://api.wave.online. 1.0.10
+        // defaulted to https://wave.online (the marketing site) and ignored WAVE_API_KEY.
+        const creds = await resolveCredentials({ project: program.opts().project });
+        if (!creds) {
+          throw new AuthRequiredError();
         }
 
-        const baseUrl = config.projects[project]?.baseUrl ?? "https://wave.online";
-        const url = path.startsWith("http")
-          ? path
-          : `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+        const url = buildApiUrl(creds.baseUrl, path);
 
         const headers: Record<string, string> = {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${creds.apiKey}`,
           "Content-Type": "application/json",
           "User-Agent": cliUserAgent(),
+          "X-Wave-Source": "cli",
         };
 
         // Add custom headers

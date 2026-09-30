@@ -2,154 +2,81 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { writeFile, mkdir, readFile, appendFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { wrapCommand } from "../../lib/errors.js";
-import { getClient } from "../../lib/api-client.js";
-import { promptSelect, promptInput } from "../../lib/prompts.js";
-import { withSpinner } from "../../lib/output/spinner.js";
-import { loadConfig, updateConfig } from "../../lib/config/manager.js";
-import { getApiKey } from "../../lib/auth/keychain.js";
-import type { PaginatedResponse } from "@wave-av/sdk";
-
-interface Organization {
-  id: string;
-  name: string;
-}
-
-interface Project {
-  id: string;
-  name: string;
-}
+import { basename, join, resolve } from "node:path";
+import { WaveError } from "@wave-av/sdk";
+import { AuthRequiredError, wrapCommand } from "../../lib/errors.js";
+import { updateConfig } from "../../lib/config/manager.js";
+import { resolveCredentials, type ResolvedCredentials } from "../../lib/auth/credentials.js";
+import { gatewayFetch } from "../../lib/gateway.js";
 
 interface ProjectLinkConfig {
-  projectId: string;
   organizationId: string;
   projectName: string;
+  linkedAt: string;
 }
 
-const CREATE_NEW_PROJECT_VALUE = "__create_new__";
+/**
+ * Served routes that report the organization an API key belongs to, tried in order. A key may
+ * lack one route's scope (403) and hold another's, so a 403 moves on to the next route; any other
+ * failure is real and propagates.
+ *
+ * 1.0.10 listed organizations and projects via GET /v1/organizations (404 ROUTE_NOT_FOUND) and
+ * GET/POST /v1/projects (404 ROUTE_NOT_MAPPED). Neither is served, and the gateway resolves the org
+ * from the key itself, so `link` now records the key's org instead of offering a list it cannot get.
+ */
+const ORG_SOURCES: Array<{ path: string; field: "organizationId" | "org" }> = [
+  { path: "/v1/billing", field: "organizationId" },
+  { path: "/v1/analytics/overview", field: "organizationId" },
+  { path: "/v1/webhook-subscriptions", field: "org" },
+];
+
+export async function discoverOrganizationId(credentials: ResolvedCredentials): Promise<string | null> {
+  for (const source of ORG_SOURCES) {
+    try {
+      const body = await gatewayFetch<Record<string, unknown>>(source.path, { credentials });
+      const value = body?.[source.field];
+      if (typeof value === "string" && value) return value;
+    } catch (err) {
+      if (err instanceof WaveError && err.statusCode === 403) continue;
+      throw err;
+    }
+  }
+  return null;
+}
 
 export function registerLinkCommands(program: Command): void {
   program
     .command("link")
-    .description("Link the current directory to a WAVE project")
-    .option("--org <id>", "Organization ID (skip org selection prompt)")
-    .option("--project <id>", "Project ID (skip project selection prompt)")
+    .description("Link the current directory to your WAVE organization")
+    .option("--org <id>", "Expected organization ID (fails if the key belongs to another org)")
+    .option("--name <name>", "Local project name (default: the directory name)")
     .action(
-      wrapCommand(async (opts) => {
-        // 1. Verify authentication
-        const config = await loadConfig();
-        const configProjectName = config.currentProject || "default";
-        const apiKey = await getApiKey(configProjectName);
-
-        if (!apiKey) {
-          console.error(
-            chalk.red(
-              `Not authenticated. Run ${chalk.bold("wave auth login")} first.`,
-            ),
-          );
-          process.exit(1);
+      wrapCommand(async (opts: { org?: string; name?: string }) => {
+        // 1. Verify authentication (WAVE_API_KEY or a stored key). 1.0.10 printed "Not
+        // authenticated" and still exited 0.
+        const credentials = await resolveCredentials({ project: program.opts().project });
+        if (!credentials) {
+          throw new AuthRequiredError();
         }
 
-        const wave = await getClient({ org: opts.org });
-
-        // 2. Fetch organizations via the SDK's underlying HTTP client
-        const orgs = await withSpinner("Fetching organizations...", async () => {
-          const response = await wave.client.get<PaginatedResponse<Organization>>(
-            "/v1/organizations",
+        // 2. Which org does this key act for?
+        const organizationId = await discoverOrganizationId(credentials);
+        if (!organizationId) {
+          throw new Error(
+            "Could not determine your organization: this key can read none of /v1/billing, " +
+              "/v1/analytics/overview, /v1/webhook-subscriptions. Pass a key with billing:read.",
           );
-          return response.data;
-        });
-
-        if (!orgs || orgs.length === 0) {
-          console.error(
-            chalk.red(
-              "No organizations found. Create one at https://wave.online/dashboard/settings/organizations",
-            ),
+        }
+        // `--org` is also a global flag; commander gives it to the program when both define it.
+        const expectedOrg = opts.org ?? (program.opts().org as string | undefined);
+        if (expectedOrg && expectedOrg !== organizationId) {
+          throw new Error(
+            `This API key belongs to organization ${organizationId}, not ${expectedOrg}. ` +
+              "Log in with a key for that organization (`wave auth login --api-key ...`).",
           );
-          process.exit(1);
         }
 
-        // 3. Select organization
-        let selectedOrg: Organization;
-        if (opts.org) {
-          const match = orgs.find((o) => o.id === opts.org);
-          if (!match) {
-            console.error(
-              chalk.red(
-                `Organization "${opts.org}" not found. Available organizations:\n` +
-                  orgs.map((o) => `  ${o.name} (${o.id})`).join("\n"),
-              ),
-            );
-            process.exit(1);
-          }
-          selectedOrg = match;
-        } else {
-          const orgId = await promptSelect(
-            "Select organization:",
-            orgs.map((o) => ({
-              name: `${o.name} (${o.id})`,
-              value: o.id,
-            })),
-          );
-          selectedOrg = orgs.find((o) => o.id === orgId)!;
-        }
-
-        // 4. Fetch projects for the selected organization
-        const projects = await withSpinner("Fetching projects...", async () => {
-          const response = await wave.client.get<PaginatedResponse<Project>>(
-            "/v1/projects",
-            {
-              params: { organization_id: selectedOrg.id },
-            },
-          );
-          return response.data;
-        });
-
-        // 5. Select or create project
-        let selectedProject: Project;
-        if (opts.project) {
-          const match = projects?.find((p) => p.id === opts.project);
-          if (!match) {
-            console.error(
-              chalk.red(
-                `Project "${opts.project}" not found in organization "${selectedOrg.name}".`,
-              ),
-            );
-            process.exit(1);
-          }
-          selectedProject = match;
-        } else {
-          const choices = [
-            ...(projects ?? []).map((p) => ({
-              name: `${p.name} (${p.id})`,
-              value: p.id,
-            })),
-            {
-              name: chalk.green("+ Create new project"),
-              value: CREATE_NEW_PROJECT_VALUE,
-            },
-          ];
-
-          const projectId = await promptSelect("Select project:", choices);
-
-          if (projectId === CREATE_NEW_PROJECT_VALUE) {
-            const newName = await promptInput("Project name:");
-            selectedProject = await withSpinner(
-              "Creating project...",
-              async () => {
-                return wave.client.post<Project>("/v1/projects", {
-                  organization_id: selectedOrg.id,
-                  name: newName,
-                });
-              },
-            );
-          } else {
-            selectedProject = projects!.find((p) => p.id === projectId)!;
-          }
-        }
-
-        // 6. Write .wave/project.json
+        // 3. Write .wave/project.json
         const cwd = resolve(process.cwd());
         const waveDirPath = join(cwd, ".wave");
         const projectJsonPath = join(waveDirPath, "project.json");
@@ -159,50 +86,37 @@ export function registerLinkCommands(program: Command): void {
         }
 
         const linkConfig: ProjectLinkConfig = {
-          projectId: selectedProject.id,
-          organizationId: selectedOrg.id,
-          projectName: selectedProject.name,
+          organizationId,
+          projectName: opts.name ?? basename(cwd),
+          linkedAt: new Date().toISOString(),
         };
 
-        await writeFile(
-          projectJsonPath,
-          JSON.stringify(linkConfig, null, 2) + "\n",
-          "utf-8",
-        );
+        await writeFile(projectJsonPath, JSON.stringify(linkConfig, null, 2) + "\n", "utf-8");
 
-        // 7. Add .wave/ to .gitignore if not already present
-        const gitignorePath = join(cwd, ".gitignore");
-        await ensureGitignoreEntry(gitignorePath, ".wave/");
+        // 4. Add .wave/ to .gitignore if not already present
+        await ensureGitignoreEntry(join(cwd, ".gitignore"), ".wave/");
 
-        // 8. Update CLI config with the linked project context
+        // 5. Remember the org on the CLI project entry the key belongs to
         await updateConfig((cfg) => ({
           ...cfg,
           projects: {
             ...cfg.projects,
-            [configProjectName]: {
-              ...cfg.projects[configProjectName],
-              organizationId: selectedOrg.id,
-              organizationName: selectedOrg.name,
+            [credentials.project]: {
+              ...cfg.projects[credentials.project],
+              organizationId,
             },
           },
         }));
 
         console.log("");
-        console.log(
-          chalk.green(
-            `Linked to "${selectedProject.name}" (${selectedProject.id})`,
-          ),
-        );
+        console.log(chalk.green(`Linked "${linkConfig.projectName}" to organization ${organizationId}`));
         console.log(chalk.dim(`Created ${projectJsonPath}`));
         console.log("");
       }),
     );
 }
 
-async function ensureGitignoreEntry(
-  gitignorePath: string,
-  entry: string,
-): Promise<void> {
+async function ensureGitignoreEntry(gitignorePath: string, entry: string): Promise<void> {
   if (existsSync(gitignorePath)) {
     const content = await readFile(gitignorePath, "utf-8");
     const lines = content.split("\n").map((l) => l.trim());
