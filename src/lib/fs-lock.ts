@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { BigIntStats } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
-import { chmod, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 /**
@@ -11,10 +11,16 @@ import { dirname } from "node:path";
  * and the later write silently drops the other's change.
  */
 
-/** A lock older than this belongs to a process that died holding it. */
+/** A lock (or removal marker) older than this belongs to a process that died holding it. */
 const STALE_LOCK_MS = 30_000;
 /** How long to wait for another `wave` process to finish its write. */
 const LOCK_WAIT_MS = 10_000;
+/**
+ * Removal markers tried per lock file (see removeLock). Marker n+1 is only ever taken because the
+ * holder of marker n died in the few milliseconds it held it, so in practice marker 0 is the only
+ * one used; the bound keeps a directory full of dead markers from being walked forever.
+ */
+const MAX_REMOVAL_MARKERS = 8;
 
 export interface FileLockOptions {
   staleMs?: number;
@@ -28,53 +34,98 @@ const isErrno = (err: unknown, code: string) => (err as NodeJS.ErrnoException | 
 /** Which lock file this is: a lock removed and re-created differs in inode and/or mtime. */
 const identityOf = (s: BigIntStats) => `${s.dev}-${s.ino}-${s.mtimeNs}`;
 
-async function statLock(lockPath: string): Promise<BigIntStats | null> {
+/** stat() with bigint times; null when the file does not exist. */
+async function statOrNull(path: string): Promise<BigIntStats | null> {
   try {
-    return await stat(lockPath, { bigint: true });
+    return await stat(path, { bigint: true });
   } catch (err) {
     if (isErrno(err, "ENOENT")) return null;
     throw err;
   }
 }
 
-/**
- * Remove `lockPath` if it is stale, without ever removing a lock someone else just took.
- *
- * Deciding "stale" and removing are two steps, so an unconditional rm() after the check races:
- * two processes both judge lock L0 stale, the first removes it and takes a fresh L1, and the
- * second's rm() then deletes L1, letting both into the section. Here the right to remove L0 is an
- * O_EXCL marker named after L0's identity (device, inode, mtime in ns): one process wins it,
- * re-checks under it that the lock file is still L0, and only then removes it. Everyone else goes
- * back to waiting. A late process that wins the marker after the winner released it finds the lock
- * is no longer L0 and removes nothing.
- *
- * Returns true when the lock is gone (removed here, or released meanwhile) and taking it can be
- * retried at once; false when the caller should wait.
- */
-async function breakStaleLock(lockPath: string, staleMs: number): Promise<boolean> {
-  const seen = await statLock(lockPath);
-  if (!seen) return true;
-  if (Date.now() - Number(seen.mtimeMs) <= staleMs) return false;
+const isOlderThan = (s: BigIntStats, ms: number) => Date.now() - Number(s.mtimeMs) > ms;
 
-  const identity = identityOf(seen);
-  const marker = `${lockPath}.${identity}.break`;
+/** Create `path` exclusively (an empty marker file); false when it already exists. */
+async function takeMarker(path: string): Promise<boolean> {
   let handle: FileHandle;
   try {
-    handle = await open(marker, "wx", 0o600);
+    handle = await open(path, "wx", 0o600);
   } catch (err) {
-    if (isErrno(err, "EEXIST")) return false; // another process is removing this same stale lock
+    if (isErrno(err, "EEXIST")) return false;
     throw err;
   }
-  await handle.close();
-  try {
-    const current = await statLock(lockPath);
-    if (!current) return true;
-    if (identityOf(current) !== identity) return false; // replaced by a live holder's fresh lock
-    await rm(lockPath, { force: true });
-    return true;
-  } finally {
-    await rm(marker, { force: true });
+  // The marker is held from the moment it exists; an empty file has nothing a failed close loses.
+  await handle.close().catch(() => undefined);
+  return true;
+}
+
+/**
+ * Remove the lock file whose identity (device, inode, mtime in ns) is `identity`, and never any
+ * other file that is at `lockPath` by then.
+ *
+ * Looking at a lock and removing it are two steps, so a bare rm() by path races. Two processes
+ * both judge lock L0 stale; the first removes it and takes a fresh L1; the second's rm() then
+ * deletes L1 and both are in the section. A holder that stalled past `staleMs` and releases L0
+ * just as a recoverer replaces it does the same. So the right to remove L0 is an O_EXCL marker
+ * named after L0's identity: whoever takes it re-checks under it that the file is still L0, and
+ * only then removes it. Stale-lock recovery and release both come through here, so they exclude
+ * each other as well.
+ *
+ * A process can die holding a marker (killed in the milliseconds between taking and dropping it).
+ * A single marker would then block every later recovery of L0 until someone deleted files by hand,
+ * so markers are numbered: one older than `staleMs` belongs to a dead process and the next process
+ * takes the next number. Once L0 is gone no lock file can have its identity again, so every marker
+ * named after it is litter, and the process that saw L0 gone removes them; a process that takes
+ * one of those numbers later re-checks, finds L0 gone, and removes nothing.
+ *
+ * Returns "gone" when L0 is no longer at `lockPath` (removed here, or already removed or replaced)
+ * and "busy" when a live process holds L0's marker, so the caller should wait and look again.
+ */
+async function removeLock(
+  lockPath: string,
+  identity: string,
+  staleMs: number,
+): Promise<"gone" | "busy"> {
+  const markerPath = (n: number) => `${lockPath}.${identity}.${n}.break`;
+  let taken = -1;
+  for (let n = 0; n < MAX_REMOVAL_MARKERS; n++) {
+    if (await takeMarker(markerPath(n))) {
+      taken = n;
+      break;
+    }
+    const marker = await statOrNull(markerPath(n));
+    // Dropped meanwhile (its holder just finished) or fresh (a live process is on it): wait.
+    if (!marker || !isOlderThan(marker, staleMs)) return "busy";
+    // Older than staleMs: its holder died while removing. Try the next number.
   }
+  if (taken < 0) return "busy";
+
+  let lockGone = false;
+  try {
+    const current = await statOrNull(lockPath);
+    if (current && identityOf(current) === identity) await rm(lockPath, { force: true });
+    lockGone = true;
+    return "gone";
+  } finally {
+    // L0 gone: every marker named after it is litter. Otherwise drop only the one taken here.
+    const lowest = lockGone ? 0 : taken;
+    for (let n = taken; n >= lowest; n--) {
+      await rm(markerPath(n), { force: true }).catch(() => undefined);
+    }
+  }
+}
+
+/**
+ * Remove `lockPath` if it is stale, never a lock someone else just took (see removeLock).
+ * Returns true when the lock is gone and taking it can be retried at once; false when the caller
+ * should wait.
+ */
+async function breakStaleLock(lockPath: string, staleMs: number): Promise<boolean> {
+  const seen = await statOrNull(lockPath);
+  if (!seen) return true;
+  if (!isOlderThan(seen, staleMs)) return false;
+  return (await removeLock(lockPath, identityOf(seen), staleMs)) === "gone";
 }
 
 /** Create the lock file exclusively; false when another process holds it. */
@@ -97,22 +148,38 @@ async function tryAcquire(lockPath: string, stamp: string): Promise<boolean> {
   return true;
 }
 
-/** Remove the lock only if it is still ours (a stalled holder may have been taken over). */
-async function releaseIfOwned(lockPath: string, stamp: string): Promise<void> {
-  let content: string;
+/**
+ * Remove the lock only if it is still ours. A holder that stalled past staleMs may have been taken
+ * over, and a recoverer may be replacing its lock at this very moment, so the stamp proves
+ * ownership and the removal itself goes through removeLock (under the lock's marker, with a
+ * re-check), never a bare rm() by path.
+ */
+async function releaseIfOwned(lockPath: string, stamp: string, staleMs: number): Promise<void> {
+  let handle: FileHandle;
   try {
-    content = await readFile(lockPath, "utf-8");
+    handle = await open(lockPath, "r");
   } catch (err) {
-    if (isErrno(err, "ENOENT")) return;
+    if (isErrno(err, "ENOENT")) return; // already removed by a recoverer
     throw err;
   }
-  if (content === stamp) await rm(lockPath, { force: true });
+  let identity: string;
+  let content: string;
+  try {
+    // Identity and stamp from one open file, so they describe the same lock file.
+    identity = identityOf(await handle.stat({ bigint: true }));
+    content = await handle.readFile("utf-8");
+  } finally {
+    await handle.close().catch(() => undefined);
+  }
+  if (content !== stamp) return; // a recoverer replaced it: not ours to remove
+  // "busy" means a recoverer holds this lock's marker and removes it itself.
+  await removeLock(lockPath, identity, staleMs);
 }
 
 /**
  * Run `fn` while holding `<target>.lock`, an exclusive-create lockfile (O_CREAT|O_EXCL, atomic on
  * every local filesystem). Waits for a live holder, takes over a stale one (see breakStaleLock),
- * and always releases the lock it holds, never one it no longer owns.
+ * and releases the lock it holds, never one it no longer owns.
  */
 export async function withFileLock<T>(
   target: string,
@@ -146,7 +213,16 @@ export async function withFileLock<T>(
   try {
     return await fn();
   } finally {
-    await releaseIfOwned(lockPath, stamp);
+    // By now `fn` has written (or failed) and that outcome must stand: a release that fails must
+    // not turn a saved credential into a reported failure. The lock left behind goes stale and the
+    // next writer recovers it (breakStaleLock); say so rather than fail silently.
+    await releaseIfOwned(lockPath, stamp, staleMs).catch((err: unknown) => {
+      process.stderr.write(
+        `Warning: could not remove the lock file ${lockPath} (${(err as Error)?.message ?? err}). ` +
+          `It counts as abandoned ${Math.round(staleMs / 1000)}s after it was taken, and the next ` +
+          "wave command then removes it.\n",
+      );
+    });
   }
 }
 
