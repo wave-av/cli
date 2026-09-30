@@ -43,6 +43,43 @@ describe("withFileLock", () => {
     expect(await withFileLock(target, async () => "ok", { staleMs: 30_000, waitMs: 500 })).toBe("ok");
   });
 
+  it("lets exactly one of several processes recovering the same stale lock in at a time", async () => {
+    // Review finding (PR #86): two recoverers both judged the old lock stale; one removed it and
+    // took a fresh lock, then the other's unconditional rm() deleted that fresh lock and both
+    // entered the section. Every contender here starts against the same aged lock.
+    const target = join(dir, "f.json");
+    writeFileSync(`${target}.lock`, "99999\n");
+    const old = (Date.now() - 120_000) / 1000;
+    utimesSync(`${target}.lock`, old, old);
+
+    let active = 0;
+    let maxActive = 0;
+    const contender = () =>
+      withFileLock(
+        target,
+        async () => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          await new Promise((r) => setTimeout(r, 5));
+          active -= 1;
+        },
+        { staleMs: 30_000, waitMs: 5_000 },
+      );
+    await Promise.all(Array.from({ length: 8 }, contender));
+    expect(maxActive).toBe(1);
+    expect(readdirSync(dir)).toEqual([]); // no lock and no break marker left behind
+  });
+
+  it("does not delete a lock it no longer owns when it releases", async () => {
+    const target = join(dir, "f.json");
+    await withFileLock(target, async () => {
+      // Simulate a takeover while this holder was stalled (e.g. a laptop suspended mid-write).
+      rmSync(`${target}.lock`);
+      writeFileSync(`${target}.lock`, "12345 someone-else\n");
+    });
+    expect(readFileSync(`${target}.lock`, "utf-8")).toBe("12345 someone-else\n");
+  });
+
   it("gives up with an actionable error while a live holder keeps the lock", async () => {
     const target = join(dir, "f.json");
     writeFileSync(`${target}.lock`, `${process.pid}\n`);

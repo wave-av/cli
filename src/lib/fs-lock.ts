@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
+import type { BigIntStats } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 /**
@@ -21,9 +23,96 @@ export interface FileLockOptions {
 
 const sleep = (ms: number) => new Promise<void>((resolveSleep) => setTimeout(resolveSleep, ms));
 
+const isErrno = (err: unknown, code: string) => (err as NodeJS.ErrnoException | null)?.code === code;
+
+/** Which lock file this is: a lock removed and re-created differs in inode and/or mtime. */
+const identityOf = (s: BigIntStats) => `${s.dev}-${s.ino}-${s.mtimeNs}`;
+
+async function statLock(lockPath: string): Promise<BigIntStats | null> {
+  try {
+    return await stat(lockPath, { bigint: true });
+  } catch (err) {
+    if (isErrno(err, "ENOENT")) return null;
+    throw err;
+  }
+}
+
+/**
+ * Remove `lockPath` if it is stale, without ever removing a lock someone else just took.
+ *
+ * Deciding "stale" and removing are two steps, so an unconditional rm() after the check races:
+ * two processes both judge lock L0 stale, the first removes it and takes a fresh L1, and the
+ * second's rm() then deletes L1, letting both into the section. Here the right to remove L0 is an
+ * O_EXCL marker named after L0's identity (device, inode, mtime in ns): one process wins it,
+ * re-checks under it that the lock file is still L0, and only then removes it. Everyone else goes
+ * back to waiting. A late process that wins the marker after the winner released it finds the lock
+ * is no longer L0 and removes nothing.
+ *
+ * Returns true when the lock is gone (removed here, or released meanwhile) and taking it can be
+ * retried at once; false when the caller should wait.
+ */
+async function breakStaleLock(lockPath: string, staleMs: number): Promise<boolean> {
+  const seen = await statLock(lockPath);
+  if (!seen) return true;
+  if (Date.now() - Number(seen.mtimeMs) <= staleMs) return false;
+
+  const identity = identityOf(seen);
+  const marker = `${lockPath}.${identity}.break`;
+  let handle: FileHandle;
+  try {
+    handle = await open(marker, "wx", 0o600);
+  } catch (err) {
+    if (isErrno(err, "EEXIST")) return false; // another process is removing this same stale lock
+    throw err;
+  }
+  await handle.close();
+  try {
+    const current = await statLock(lockPath);
+    if (!current) return true;
+    if (identityOf(current) !== identity) return false; // replaced by a live holder's fresh lock
+    await rm(lockPath, { force: true });
+    return true;
+  } finally {
+    await rm(marker, { force: true });
+  }
+}
+
+/** Create the lock file exclusively; false when another process holds it. */
+async function tryAcquire(lockPath: string, stamp: string): Promise<boolean> {
+  let handle: FileHandle;
+  try {
+    handle = await open(lockPath, "wx", 0o600);
+  } catch (err) {
+    if (isErrno(err, "EEXIST")) return false;
+    throw err;
+  }
+  try {
+    await handle.writeFile(stamp);
+  } catch (err) {
+    await handle.close().catch(() => undefined);
+    await rm(lockPath, { force: true }); // ours, just created: do not leave it to go stale
+    throw err;
+  }
+  await handle.close();
+  return true;
+}
+
+/** Remove the lock only if it is still ours (a stalled holder may have been taken over). */
+async function releaseIfOwned(lockPath: string, stamp: string): Promise<void> {
+  let content: string;
+  try {
+    content = await readFile(lockPath, "utf-8");
+  } catch (err) {
+    if (isErrno(err, "ENOENT")) return;
+    throw err;
+  }
+  if (content === stamp) await rm(lockPath, { force: true });
+}
+
 /**
  * Run `fn` while holding `<target>.lock`, an exclusive-create lockfile (O_CREAT|O_EXCL, atomic on
- * every local filesystem). Waits for a live holder, takes over a stale one, and always releases.
+ * every local filesystem). Waits for a live holder, takes over a stale one (see breakStaleLock),
+ * and always releases the lock it holds, never one it no longer owns.
  */
 export async function withFileLock<T>(
   target: string,
@@ -33,45 +122,31 @@ export async function withFileLock<T>(
   const staleMs = options.staleMs ?? STALE_LOCK_MS;
   const waitMs = options.waitMs ?? LOCK_WAIT_MS;
   const lockPath = `${target}.lock`;
+  // pid for a human reading the file; the random token is what proves ownership on release.
+  const stamp = `${process.pid} ${randomBytes(12).toString("hex")}\n`;
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
 
   const deadline = Date.now() + waitMs;
   let delay = 10;
-  for (;;) {
-    try {
-      const handle = await open(lockPath, "wx", 0o600);
-      try {
-        await handle.writeFile(`${process.pid}\n`);
-      } finally {
-        await handle.close();
-      }
-      break;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      try {
-        const held = await stat(lockPath);
-        if (Date.now() - held.mtimeMs > staleMs) {
-          await rm(lockPath, { force: true });
-          continue;
-        }
-      } catch {
-        continue; // released between our open() and stat(): try again at once
-      }
-      if (Date.now() >= deadline) {
-        throw new Error(
-          `Another wave process is still writing ${target} (lock: ${lockPath}). Retry in a moment; ` +
-            "if no other wave command is running, delete the lock file.",
-        );
-      }
-      await sleep(delay);
-      delay = Math.min(delay * 2, 200);
+  while (!(await tryAcquire(lockPath, stamp))) {
+    if (await breakStaleLock(lockPath, staleMs)) continue;
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Another wave process is still writing ${target} (lock: ${lockPath}). Retry in a moment; ` +
+          "if no other wave command is running, delete the lock file.",
+      );
     }
+    // Jittered: waiters that started together must not wake together. Without jitter every
+    // waiter slept the same 10, 20, 40 … 200ms schedule, so each release was followed by one
+    // winner and a herd sleeping another full 200ms (24 queued writers took ~4.2s).
+    await sleep(delay / 2 + Math.random() * (delay / 2));
+    delay = Math.min(delay * 2, 100);
   }
 
   try {
     return await fn();
   } finally {
-    await rm(lockPath, { force: true });
+    await releaseIfOwned(lockPath, stamp);
   }
 }
 

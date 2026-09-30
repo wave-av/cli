@@ -20,7 +20,9 @@ All notable changes to this project are documented here. The format is based on
     written atomically, so two `wave` processes (a token refresh and a login to another project)
     cannot drop each other's change. A config or credentials file that does not parse is
     reported (config: exit 9) and left untouched; earlier versions overwrote it with defaults,
-    erasing every saved project. Reading a missing config no longer creates one.
+    erasing every saved project. Reading a missing config no longer creates one. A lock left by
+    a process that died is taken over by exactly one waiter, which re-checks that it is still
+    the same lock file before removing it, and a process only ever removes the lock it holds.
   - `wave auth login --api-key-stdin` reads the key from a pipe, keeping it out of the process
     list and shell history. Logging in again clears the organization cached for the project.
   - `wave auth login` (device flow) called `/api/oauth/device/authorize|token`, which the API
