@@ -75,8 +75,8 @@ export const TEMPLATES: TemplateDefinition[] = [
 ];
 
 /**
- * Template directories that ship but are not offered, with the reason. Each calls an SDK method
- * that does not exist in @wave-av/sdk, so the generated project could neither compile nor run.
+ * Templates removed from the package, with the reason. Each called an SDK method that does not
+ * exist in @wave-av/sdk, so the generated project could neither compile nor run.
  * `--template <name>` explains instead of reporting an unknown template.
  */
 export const WITHHELD_TEMPLATES: Record<string, string> = {

@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEMPLATES, WITHHELD_TEMPLATES, findTemplatesDir, resolveTemplate } from "./index.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -40,7 +40,7 @@ describe("wave init: templates", () => {
     expect(() => findTemplatesDir(empty)).toThrow(/templates directory not found/);
   });
 
-  it("accounts for every shipped template: offered, or withheld with a reason (blank/multi-camera/podcast were unreachable)", () => {
+  it("offers every shipped template (blank/multi-camera/podcast were unreachable) and ships no withheld one", () => {
     const shipped = readdirSync(SHIPPED_TEMPLATES, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
@@ -48,7 +48,9 @@ describe("wave init: templates", () => {
     const offered = TEMPLATES.map((t) => t.dirName);
     const withheld = Object.keys(WITHHELD_TEMPLATES);
     expect(offered.filter((d) => withheld.includes(d))).toEqual([]);
-    expect([...offered, ...withheld].sort()).toEqual(shipped);
+    expect([...offered].sort()).toEqual(shipped);
+    // A withheld template called SDK methods that do not exist; its code must not ship at all.
+    for (const name of withheld) expect(existsSync(join(SHIPPED_TEMPLATES, name)), name).toBe(false);
   });
 
   it("the templates that run end to end today are offered without a preview note", () => {
@@ -66,7 +68,7 @@ describe("wave init: templates", () => {
   });
 
   it("every shipped template has a package.json that depends on the real SDK package (@wave-av/sdk)", () => {
-    for (const t of [...TEMPLATES.map((x) => x.dirName), ...Object.keys(WITHHELD_TEMPLATES)].map((dirName) => ({ dirName }))) {
+    for (const t of TEMPLATES) {
       const file = join(SHIPPED_TEMPLATES, t.dirName, "package.json");
       expect(existsSync(file), `${t.dirName}/package.json`).toBe(true);
       const pkg = JSON.parse(readFileSync(file, "utf-8")) as { dependencies?: Record<string, string> };
@@ -74,5 +76,76 @@ describe("wave init: templates", () => {
       expect(deps, t.dirName).not.toContain("@wave/sdk");
       if (deps.some((d) => d.includes("sdk"))) expect(deps, t.dirName).toContain("@wave-av/sdk");
     }
+  });
+});
+
+/** The whole command, through the real command tree, into a throwaway working directory. */
+describe("wave init: scaffolding (command level)", () => {
+  let work: string;
+  let out: string[];
+
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), "wave-cli-init-run-"));
+    out = [];
+    vi.spyOn(process, "cwd").mockReturnValue(work);
+    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void out.push(a.join(" ")));
+    vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => void out.push(a.join(" ")));
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(work, { recursive: true, force: true });
+  });
+
+  async function wave(...args: string[]): Promise<void> {
+    const { createProgram } = await import("../../cli.js");
+    const program = createProgram();
+    program.exitOverride();
+    await program.parseAsync(["node", "wave", ...args]);
+  }
+
+  it("writes a buildable project: template files, package.json renamed, tsconfig, config, README", async () => {
+    await wave("init", "my-app", "--template", "blank", "--no-install");
+    const dir = join(work, "my-app");
+
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf-8")) as {
+      name: string;
+      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    expect(pkg.name).toBe("my-app");
+    expect(pkg.dependencies["@wave-av/sdk"]).toBeDefined();
+    expect(pkg.devDependencies["@types/node"]).toBeDefined();
+
+    expect(existsSync(join(dir, "src", "index.ts"))).toBe(true);
+    // The template's own example env file is copied (the template's error message points at it).
+    expect(existsSync(join(dir, ".env.example"))).toBe(true);
+    const tsconfig = JSON.parse(readFileSync(join(dir, "tsconfig.json"), "utf-8")) as { compilerOptions: { rootDir: string } };
+    expect(tsconfig.compilerOptions.rootDir).toBe("src");
+    const config = readFileSync(join(dir, "wave.config.ts"), "utf-8");
+    expect(config).toContain('project: "my-app"');
+    expect(config).not.toContain("defineConfig");
+    expect(readFileSync(join(dir, ".gitignore"), "utf-8")).toContain(".wave/");
+    expect(readFileSync(join(dir, "README.md"), "utf-8")).toContain("https://docs.wave.online/docs/cli");
+    expect(out.join("\n")).toMatch(/Ready!/);
+  });
+
+  it("prints the preview note for a template whose routes are not served yet", async () => {
+    await wave("init", "live-app", "--template", "webrtc-demo", "--no-install");
+    expect(existsSync(join(work, "live-app", "package.json"))).toBe(true);
+    expect(out.join("\n")).toMatch(/Preview: .*\/v1\/streams/);
+  });
+
+  it("refuses a withheld template and an existing directory without writing anything", async () => {
+    await expect(wave("init", "x", "--template", "studio-plugin", "--no-install")).rejects.toThrow(/process\.exit\(1\)/);
+    expect(existsSync(join(work, "x"))).toBe(false);
+    expect(out.join("\n")).toMatch(/not available yet/);
+
+    mkdirSync(join(work, "taken"));
+    await expect(wave("init", "taken", "--template", "blank", "--no-install")).rejects.toThrow(/process\.exit\(1\)/);
+    expect(readdirSync(join(work, "taken"))).toEqual([]);
   });
 });
