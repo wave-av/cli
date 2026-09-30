@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WaveError } from "@wave-av/sdk";
 import { gatewayFetch, toGatewayError } from "./gateway.js";
-import { AuthRequiredError, formatCLIError } from "./errors.js";
+import {
+  AuthRequiredError,
+  formatCLIError,
+  KeychainTimeoutError,
+  KEYCHAIN_TIMEOUT_EXIT_STATUS,
+} from "./errors.js";
 import { EXIT_CODES } from "./exit-codes.js";
 import type { ResolvedCredentials } from "./auth/credentials.js";
 
@@ -105,5 +110,13 @@ describe("formatCLIError for connectivity failures", () => {
     expect(exitCode).toBe(EXIT_CODES.AUTH_REQUIRED);
     expect(message).toMatch(/wave auth login/);
     expect(message).not.toMatch(/`wave login`/);
+  });
+
+  it("reports a keychain timeout with its real exit status (137, SIGKILL) and the workarounds", () => {
+    const { message, exitCode } = formatCLIError(
+      new KeychainTimeoutError("The OS keychain did not answer within 60s (store)."),
+    );
+    expect(exitCode).toBe(KEYCHAIN_TIMEOUT_EXIT_STATUS);
+    expect(message).toMatch(/did not answer/);
   });
 });

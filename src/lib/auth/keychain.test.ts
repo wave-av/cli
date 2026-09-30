@@ -12,6 +12,7 @@ import {
   storeRefreshToken,
   getRefreshToken,
   deleteAllKeys,
+  useKeytarForTests,
 } from "./keychain.js";
 
 /**
@@ -124,5 +125,54 @@ describe("file credential store (WAVE_CREDENTIAL_STORE=file)", () => {
     await deleteAllKeys();
     expect(await getApiKey("a")).toBeNull();
     expect(await getApiKey("b")).toBeNull();
+  });
+});
+
+describe("OS keychain that never answers (locked keychain, headless session)", () => {
+  // Observed on macOS: with the login keychain locked and no GUI to unlock it, keytar's
+  // setPassword blocks indefinitely, so `wave auth login --api-key` hung with no output.
+  const never = () => new Promise<never>(() => undefined);
+  const stuck = {
+    setPassword: never,
+    getPassword: never,
+    deletePassword: never,
+    findCredentials: never,
+  };
+
+  beforeEach(() => {
+    vi.stubEnv("WAVE_CREDENTIAL_STORE", "");
+    vi.stubEnv("WAVE_KEYCHAIN_TIMEOUT_MS", "25");
+    useKeytarForTests(stuck);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetKeytarCacheForTests();
+  });
+
+  it("fails a store with an actionable error instead of hanging", async () => {
+    await expect(storeApiKey("default", "wave_test_example_key")).rejects.toThrow(
+      /keychain did not answer.*store.*WAVE_CREDENTIAL_STORE=file/s,
+    );
+  });
+
+  it("bounds reads, deletes and logout --all the same way", async () => {
+    await expect(getApiKey("default")).rejects.toThrow(/did not answer.*\(read\)/);
+    await expect(deleteApiKey("default")).rejects.toThrow(/did not answer.*\(delete\)/);
+    await expect(deleteAllKeys()).rejects.toThrow(/did not answer.*\(list\)/);
+  });
+
+  it("does not delay a keychain that answers", async () => {
+    let stored = "";
+    useKeytarForTests({
+      setPassword: async (_s, _a, v) => {
+        stored = v;
+      },
+      getPassword: async () => stored || null,
+      deletePassword: async () => true,
+      findCredentials: async () => [],
+    });
+    await storeApiKey("default", "wave_test_example_key");
+    expect(await getApiKey("default")).toBe("wave_test_example_key");
   });
 });

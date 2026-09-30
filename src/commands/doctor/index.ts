@@ -51,8 +51,10 @@ export function registerDoctorCommands(program: Command): void {
 
         // 3. Authentication
         const config = await loadConfig();
-        const apiKey = await getApiKey(config.currentProject);
         const envKey = process.env["WAVE_API_KEY"];
+        // WAVE_API_KEY wins (same order as every command), so the keychain is only consulted
+        // without it: a locked keychain must not stall a diagnostic that does not need it.
+        const apiKey = envKey ? null : await getApiKey(config.currentProject);
         if (envKey) {
           checks.push({
             name: "Auth",

@@ -2,6 +2,21 @@ import chalk from "chalk";
 import { WaveError, RateLimitError } from "@wave-av/sdk";
 import { EXIT_CODES } from "./exit-codes.js";
 import { detectEnvironment } from "./environment.js";
+
+/** 128 + SIGKILL: how a process ends after a keychain timeout (see wrapCommand). */
+export const KEYCHAIN_TIMEOUT_EXIT_STATUS = 137;
+
+/**
+ * The OS keychain did not answer in time (lib/auth/keychain.ts). The native call behind it is still
+ * blocked on a libuv threadpool thread, and Node's process.exit() joins that pool, so a normal exit
+ * would hang too: wrapCommand terminates the process with SIGKILL after printing the message.
+ */
+export class KeychainTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "KeychainTimeoutError";
+  }
+}
 import {
   getAuthSuggestions,
   getRateLimitSuggestions,
@@ -83,6 +98,19 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       error.requestId ? chalk.dim(`  Request ID: ${error.requestId}`) : "",
     ].filter(Boolean);
     return { message: lines.join("\n"), exitCode };
+  }
+
+  if (error instanceof KeychainTimeoutError) {
+    // The real exit status: wrapCommand has to SIGKILL the process (see KeychainTimeoutError).
+    const exitCode = KEYCHAIN_TIMEOUT_EXIT_STATUS;
+    if (env.preferJson) {
+      const structured = toStructuredError("KEYCHAIN_TIMEOUT", error.message, exitCode, [
+        { message: "Use an API key for this shell", command: "export WAVE_API_KEY=..." },
+        { message: "Use the credentials file", command: "export WAVE_CREDENTIAL_STORE=file" },
+      ]);
+      return { message: JSON.stringify(structured, null, 2), exitCode };
+    }
+    return { message: chalk.red(error.message), exitCode };
   }
 
   if (error instanceof CapabilityUnavailableError) {
@@ -184,6 +212,12 @@ export function wrapCommand<T extends unknown[]>(
       await fn(...args);
     } catch (error) {
       const { message, exitCode } = formatCLIError(error);
+      if (error instanceof KeychainTimeoutError) {
+        // process.exit() would hang: it joins the libuv threadpool, where the keychain call is
+        // still blocked. Flush the message, then end the process the only way that cannot hang.
+        process.stderr.write(`${message}\n`, () => process.kill(process.pid, "SIGKILL"));
+        return;
+      }
       console.error(message);
       process.exit(exitCode);
     }

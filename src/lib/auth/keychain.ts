@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { KeychainTimeoutError } from "../errors.js";
 
 const SERVICE_NAME = "wave-cli";
 
@@ -68,10 +69,47 @@ export async function credentialBackend(): Promise<"keychain" | "file"> {
   return (await getKeytar()) ? "keychain" : "file";
 }
 
+/** Long enough for a person to answer the OS "allow access" prompt; `WAVE_KEYCHAIN_TIMEOUT_MS` overrides. */
+const DEFAULT_KEYCHAIN_TIMEOUT_MS = 60_000;
+
+function keychainTimeoutMs(): number {
+  const raw = Number(process.env["WAVE_KEYCHAIN_TIMEOUT_MS"]);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_KEYCHAIN_TIMEOUT_MS;
+}
+
+/**
+ * Bound a keychain call. A locked macOS login keychain blocks keytar's write until someone answers
+ * an unlock prompt, and where nobody can (a locked screen, some headless sessions) `wave auth login
+ * --api-key` hung forever with no output. After the timeout the command fails with what to do
+ * instead. It never falls back to the plaintext file silently: that choice belongs to the user
+ * (`WAVE_CREDENTIAL_STORE=file`).
+ */
+async function withKeychainTimeout<T>(operation: string, work: Promise<T>): Promise<T> {
+  const ms = keychainTimeoutMs();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new KeychainTimeoutError(
+          `The OS keychain did not answer within ${Math.round(ms / 1000)}s (${operation}). It is ` +
+            "usually locked and waiting for an unlock prompt this session cannot show (SSH, CI, a " +
+            "locked screen). Unlock it (`security unlock-keychain` on macOS), set WAVE_API_KEY for " +
+            "this shell, or store credentials in ~/.wave/credentials.json with WAVE_CREDENTIAL_STORE=file.",
+        ),
+      );
+    }, ms);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function setSecret(account: string, value: string): Promise<void> {
   const keytar = await getKeytar();
   if (keytar) {
-    await keytar.setPassword(SERVICE_NAME, account, value);
+    await withKeychainTimeout("store", keytar.setPassword(SERVICE_NAME, account, value));
     return;
   }
   const creds = await loadCredentials();
@@ -82,7 +120,7 @@ async function setSecret(account: string, value: string): Promise<void> {
 async function getSecret(account: string): Promise<string | null> {
   const keytar = await getKeytar();
   if (keytar) {
-    return keytar.getPassword(SERVICE_NAME, account);
+    return withKeychainTimeout("read", keytar.getPassword(SERVICE_NAME, account));
   }
   const creds = await loadCredentials();
   return creds[account] ?? null;
@@ -91,7 +129,7 @@ async function getSecret(account: string): Promise<string | null> {
 async function deleteSecret(account: string): Promise<void> {
   const keytar = await getKeytar();
   if (keytar) {
-    await keytar.deletePassword(SERVICE_NAME, account);
+    await withKeychainTimeout("delete", keytar.deletePassword(SERVICE_NAME, account));
     return;
   }
   const creds = await loadCredentials();
@@ -125,9 +163,9 @@ export async function getRefreshToken(project: string): Promise<string | null> {
 export async function deleteAllKeys(): Promise<void> {
   const keytar = await getKeytar();
   if (keytar) {
-    const credentials = await keytar.findCredentials(SERVICE_NAME);
+    const credentials = await withKeychainTimeout("list", keytar.findCredentials(SERVICE_NAME));
     for (const cred of credentials) {
-      await keytar.deletePassword(SERVICE_NAME, cred.account);
+      await withKeychainTimeout("delete", keytar.deletePassword(SERVICE_NAME, cred.account));
     }
     return;
   }
@@ -176,4 +214,10 @@ async function saveCredentials(creds: Record<string, string>): Promise<void> {
 export function resetKeytarCacheForTests(): void {
   keytarModule = null;
   keytarChecked = false;
+}
+
+/** Test hook: use this keychain implementation instead of importing keytar. */
+export function useKeytarForTests(mod: KeytarLike): void {
+  keytarModule = mod;
+  keytarChecked = true;
 }
