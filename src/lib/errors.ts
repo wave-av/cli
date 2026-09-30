@@ -93,7 +93,7 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       ]);
       return { message: JSON.stringify(structured, null, 2), exitCode };
     }
-    return { message: chalk.red(error.message), exitCode };
+    return { message: chalk.red(sanitizeForTerminal(error.message)), exitCode };
   }
 
   if (error instanceof WaveError && UNSERVED_ROUTE_CODES.has(error.code)) {
@@ -118,7 +118,8 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       const structured = toStructuredError("CONFIG_ERROR", error.message, exitCode, []);
       return { message: JSON.stringify(structured, null, 2), exitCode };
     }
-    return { message: chalk.red(error.message), exitCode };
+    // Carries WAVE_BASE_URL / the saved baseUrl / a file path verbatim: same rule as API text.
+    return { message: chalk.red(sanitizeForTerminal(error.message)), exitCode };
   }
 
   if (error instanceof KeychainTimeoutError) {
@@ -131,7 +132,7 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       ]);
       return { message: JSON.stringify(structured, null, 2), exitCode };
     }
-    return { message: chalk.red(error.message), exitCode };
+    return { message: chalk.red(sanitizeForTerminal(error.message)), exitCode };
   }
 
   if (error instanceof CapabilityUnavailableError) {
@@ -140,7 +141,7 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       const structured = toStructuredError("CAPABILITY_UNAVAILABLE", error.message, exitCode, []);
       return { message: JSON.stringify(structured, null, 2), exitCode };
     }
-    return { message: chalk.yellow(error.message), exitCode };
+    return { message: chalk.yellow(sanitizeForTerminal(error.message)), exitCode };
   }
 
   if (error instanceof RateLimitError) {
@@ -221,7 +222,8 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
   }
 
   return {
-    message: chalk.red(`Unexpected error: ${String(error)}`),
+    // A thrown non-Error can be anything, including text with terminal escapes.
+    message: chalk.red(`Unexpected error: ${sanitizeForTerminal(String(error))}`),
     exitCode: EXIT_CODES.GENERAL_ERROR,
   };
 }

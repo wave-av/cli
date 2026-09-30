@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WaveError } from "@wave-av/sdk";
 import {
+  AuthRequiredError,
+  CapabilityUnavailableError,
   ConfigError,
   KEYCHAIN_TIMEOUT_EXIT_STATUS,
   KeychainTimeoutError,
@@ -80,5 +82,24 @@ describe("terminal output of API-controlled text", () => {
     const { message } = formatCLIError(new WaveError("boom\u001b]8;;https://evil.example\u0007click", "E", 500));
     expect(message).not.toContain("\u001b]8;");
     expect(message).toContain("boom]8;;https://evil.exampleclick");
+  });
+
+  it("local-config, auth, keychain, capability and non-Error failures are sanitized too", () => {
+    // Review finding (PR #86): these branches printed error.message raw. ConfigError embeds
+    // WAVE_BASE_URL / the saved baseUrl verbatim, and a thrown non-Error can be any text.
+    const osc = "\u001b]0;pwned\u0007";
+    const failures: unknown[] = [
+      new ConfigError(`WAVE_BASE_URL must use https: ${osc}`),
+      new AuthRequiredError(`no key ${osc}`),
+      new KeychainTimeoutError(`keychain ${osc}`),
+      new CapabilityUnavailableError(`not yet ${osc}`, "cap"),
+      `thrown string ${osc}`,
+    ];
+    for (const failure of failures) {
+      const { message } = formatCLIError(failure);
+      expect(message).not.toContain("\u001b]0;");
+      expect(message).not.toContain("\u0007");
+      expect(message).toContain("]0;pwned");
+    }
   });
 });
