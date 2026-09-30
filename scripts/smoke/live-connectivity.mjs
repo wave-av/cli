@@ -30,7 +30,9 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const args = process.argv.slice(2);
 const binFlag = args.indexOf("--bin");
-const BIN = binFlag >= 0 ? args[binFlag + 1] : join(ROOT, "dist", "index.js");
+// Absolute before anything uses it: the CLI runs with cwd set to a throwaway HOME, where a relative
+// `--bin ./dist/index.js` would no longer point at the binary that the existence check found.
+const BIN = binFlag >= 0 ? resolve(args[binFlag + 1] ?? "") : join(ROOT, "dist", "index.js");
 const WITH_DEVICE = args.includes("--device");
 const KEY = process.env.WAVE_API_KEY ?? "";
 const BASE = (process.env.WAVE_BASE_URL || "https://api.wave.online").replace(/\/+$/, "");
@@ -54,6 +56,20 @@ function record(name, ok, detail) {
 }
 
 /**
+ * Start the CLI binary synchronously. A .js entry runs under this node. On Windows an npm-installed
+ * `wave` is a `wave.cmd` shim, which Node refuses to spawn without a shell (CVE-2024-27980), so
+ * shims go through cmd.exe with the path quoted; every argument this script passes is a fixed
+ * literal with no spaces or shell metacharacters. Elsewhere the binary is executed directly.
+ */
+function launch(cliArgs, options) {
+  if (/\.(c?js|mjs)$/i.test(BIN)) return spawnSync(process.execPath, [BIN, ...cliArgs], options);
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(BIN)) {
+    return spawnSync(`"${BIN}"`, cliArgs, { ...options, shell: true });
+  }
+  return spawnSync(BIN, cliArgs, options);
+}
+
+/**
  * Run the CLI. `withKey:false` removes WAVE_API_KEY so only the stored credential can be used.
  * `input` is written to the child's stdin: the only way this script hands the CLI a key other
  * than the environment, so the key never appears in a process's arguments.
@@ -73,12 +89,9 @@ function wave(cliArgs, { withKey = true, cwd = home, input, extraEnv = {} } = {}
   delete env.WAVE_ORG_ID;
   delete env.WAVE_PROJECT;
   if (!withKey) delete env.WAVE_API_KEY;
-  const isJs = BIN.endsWith(".js") || BIN.endsWith(".mjs");
-  const cmd = isJs ? process.execPath : BIN;
-  const argv = isJs ? [BIN, ...cliArgs] : cliArgs;
   // Exit 6 is the gateway's rate limit (429), not a connectivity verdict: back off and retry.
   for (let attempt = 0; ; attempt++) {
-    const r = spawnSync(cmd, argv, { cwd, env, input, encoding: "utf-8", timeout: 60_000 });
+    const r = launch(cliArgs, { cwd, env, input, encoding: "utf-8", timeout: 60_000 });
     if (r.status === 6 && attempt < 3) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000 * (attempt + 1));
       continue;
@@ -164,22 +177,26 @@ try {
   );
 
   // Unserved route: says so and exits 11 instead of a plain 404. If the route has since been
-  // served, the command must return a real stream list instead; anything else fails.
+  // served, the command must print a real stream list instead (`stream list -o json` prints the
+  // page's `data` array; an empty array is a valid answer). Any other JSON, or none, fails.
   const streams = wave(["-o", "json", "stream", "list"]);
   const se = json(streams.stderr);
   const unserved = streams.code === 11 && ["ROUTE_NOT_FOUND", "ROUTE_NOT_MAPPED"].includes(se?.error?.code);
-  const servedList = streams.code === 0 && json(streams.stdout) !== null;
+  const servedList = streams.code === 0 && Array.isArray(json(streams.stdout));
   record(
-    "stream list: ROUTE_NOT_FOUND/ROUTE_NOT_MAPPED reported as not served (exit 11), or a served JSON list",
+    "stream list: ROUTE_NOT_FOUND/ROUTE_NOT_MAPPED reported as not served (exit 11), or a served stream array",
     unserved || servedList,
     `exit=${streams.code} code=${se?.error?.code ?? "none"} req=${se?.error?.request_id ?? ""}`,
   );
 
-  // `wave api` uses the same exit-code contract as every command.
-  const rawStreams = wave(["api", "GET", "/v1/streams"]);
+  // `wave api` uses the same exit-code contract as every command. Once served, the body must be
+  // the paginated page the SDK reads ({ data: [...] }), not merely any 2xx.
+  const rawStreams = wave(["-o", "json", "api", "GET", "/v1/streams"]);
+  const rawNotServed = rawStreams.code === 11 && /ROUTE_NOT_(FOUND|MAPPED)/.test(rawStreams.stderr);
+  const rawServed = rawStreams.code === 0 && Array.isArray(json(rawStreams.stdout)?.data);
   record(
-    "api GET /v1/streams: exit 11 with the gateway's ROUTE_NOT_FOUND body (or 0 once served)",
-    (rawStreams.code === 11 && /ROUTE_NOT_(FOUND|MAPPED)/.test(rawStreams.stderr)) || rawStreams.code === 0,
+    "api GET /v1/streams: exit 11 with the gateway's ROUTE_NOT_FOUND body (or, once served, a { data: [] } page)",
+    rawNotServed || rawServed,
     `exit=${rawStreams.code}`,
   );
 
@@ -234,13 +251,7 @@ try {
   if (WITH_DEVICE) {
     const env = { ...process.env, HOME: home, USERPROFILE: home, WAVE_CREDENTIAL_STORE: "file", NO_COLOR: "1" };
     delete env.WAVE_API_KEY;
-    const isJs = BIN.endsWith(".js") || BIN.endsWith(".mjs");
-    const r = spawnSync(isJs ? process.execPath : BIN, [...(isJs ? [BIN] : []), "auth", "login", "--no-browser"], {
-      cwd: home,
-      env,
-      encoding: "utf-8",
-      timeout: 15_000,
-    });
+    const r = launch(["auth", "login", "--no-browser"], { cwd: home, env, encoding: "utf-8", timeout: 15_000 });
     const out = r.stdout ?? "";
     const verify = out.match(/https?:\/\/\S+/)?.[0] ?? "";
     record(
