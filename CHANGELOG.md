@@ -23,6 +23,10 @@ All notable changes to this project are documented here. The format is based on
     erasing every saved project. Reading a missing config no longer creates one. A lock left by
     a process that died is taken over by exactly one waiter, which re-checks that it is still
     the same lock file before removing it, and a process only ever removes the lock it holds.
+    Releasing a lock goes through the same check, so a holder that stalled cannot delete the
+    lock that replaced its own. A process killed in the middle of removing a stale lock no
+    longer blocks later writers, and a lock that cannot be released is reported on stderr
+    instead of turning a saved credential or config change into a failure.
   - `wave auth login --api-key-stdin` reads the key from a pipe, keeping it out of the process
     list and shell history. Logging in again clears the organization cached for the project.
   - `wave auth login` (device flow) called `/api/oauth/device/authorize|token`, which the API
@@ -31,7 +35,8 @@ All notable changes to this project are documented here. The format is based on
     refreshes an expired access token before use. A refused refresh sends the old token (the
     API's 401 then says to log in again); a network failure past expiry, or a refreshed token
     that cannot be saved, is reported instead of being swallowed. `--no-browser` prints the URL
-    only, and the browser is opened only for a verification page on the API host.
+    only, and the browser is opened only for a verification page on the API host. A grant
+    without a usable `interval` is polled every 5s (RFC 8628's default), not in a tight loop.
   - `auth login` now writes the project entry that every API command reads. 1.0.10 stored a key
     and then refused to use it: `No project "default" configured`.
   - `wave login` / `wave logout` exist as aliases (README, `wave doctor` and error hints all
@@ -58,7 +63,8 @@ All notable changes to this project are documented here. The format is based on
   `me:read` it still reports the organization (from `GET /v1/billing`) and says why the profile
   is missing. When the key cannot read billing either, `organizationUnavailable` says so;
   any other failure of that fallback (401, 5xx) is an error, not a partial identity. Text
-  from the API is stripped of terminal control sequences before it is printed. `whoami -o json` and `status -o json` now print exactly one JSON document (1.0.10
+  from the API, and every error the shared error formatter prints (including ones that quote
+  `WAVE_BASE_URL` or the saved `baseUrl`), is stripped of terminal control sequences first. `whoami -o json` and `status -o json` now print exactly one JSON document (1.0.10
   printed the human block first, so piping to `jq` failed).
 - A missing credential now exits 2 (`AUTH_REQUIRED`, the documented code) from every command,
   including `wave auth status`, with the structured error under `-o json`. 1.0.10 exited 1 with
