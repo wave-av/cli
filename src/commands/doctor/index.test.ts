@@ -18,6 +18,7 @@ vi.mock("../../lib/auth/keychain.js", () => ({
 
 import { loadConfig } from "../../lib/config/manager.js";
 import { getApiKey } from "../../lib/auth/keychain.js";
+import { KeychainTimeoutError } from "../../lib/errors.js";
 import { registerDoctorCommands } from "./index.js";
 
 function buildProgram(): Command {
@@ -74,6 +75,41 @@ describe("wave doctor: which credential it checks", () => {
     const env = await runDoctor();
     expect(getApiKey).toHaveBeenLastCalledWith("staging");
     expect(env.find((c) => c.name === "Auth")).toMatchObject({ status: "fail", message: expect.stringMatching(/"staging"/) });
+  });
+
+  it("reports a broken credential store as the Auth check and still runs every other check", async () => {
+    // Review finding (PR #86): keytar that loads without its full API is refused loudly, and that
+    // throw used to abort doctor before it printed anything.
+    vi.mocked(loadConfig).mockResolvedValue(getDefaultConfig());
+    vi.mocked(getApiKey).mockRejectedValue(
+      new Error("The installed keytar module does not provide setPassword/getPassword/deletePassword/findCredentials"),
+    );
+    const checks = await runDoctor();
+    expect(checks.map((c) => c.name)).toEqual(["Node.js", "Config", "Auth", "Projects", "Environment", "Telemetry"]);
+    expect(checks.find((c) => c.name === "Auth")).toMatchObject({
+      status: "fail",
+      message: expect.stringMatching(/^Credential store unusable: The installed keytar module/),
+      fix: expect.stringMatching(/WAVE_API_KEY.*WAVE_CREDENTIAL_STORE=file/),
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("still ends the process through wrapCommand when the keychain times out", async () => {
+    vi.mocked(loadConfig).mockResolvedValue(getDefaultConfig());
+    vi.mocked(getApiKey).mockRejectedValue(new KeychainTimeoutError("The OS keychain did not answer within 60s (read)."));
+    const stderr: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation(((chunk: string, done?: () => void) => {
+      stderr.push(String(chunk));
+      done?.();
+      return true;
+    }) as typeof process.stderr.write);
+    const kill = vi.spyOn(process, "kill").mockImplementation((() => true) as typeof process.kill);
+    const out: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void out.push(a.map(String).join(" ")));
+    await buildProgram().parseAsync(["node", "wave", "doctor"]);
+    expect(stderr.join("")).toMatch(/keychain did not answer/);
+    expect(kill).toHaveBeenCalledWith(process.pid, "SIGKILL");
+    expect(out).toEqual([]); // no half-finished report on stdout
   });
 
   it("reports a config file it refuses to use as a failed check instead of crashing", async () => {

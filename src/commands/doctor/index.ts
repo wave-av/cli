@@ -6,7 +6,7 @@ import { getApiKey } from "../../lib/auth/keychain.js";
 import { resolveProjectName } from "../../lib/auth/credentials.js";
 import type { WaveConfig } from "../../types/index.js";
 import { formatOutput } from "../../lib/output/index.js";
-import { wrapCommand } from "../../lib/errors.js";
+import { KeychainTimeoutError, wrapCommand } from "../../lib/errors.js";
 import { detectEnvironment } from "../../lib/environment.js";
 import { maskSecret } from "../../lib/mask.js";
 
@@ -61,8 +61,28 @@ export function registerDoctorCommands(program: Command): void {
         const envKey = process.env["WAVE_API_KEY"];
         // WAVE_API_KEY wins (same order as every command), so the keychain is only consulted
         // without it: a locked keychain must not stall a diagnostic that does not need it.
-        const apiKey = envKey ? null : await getApiKey(project);
-        if (envKey) {
+        let apiKey: string | null = null;
+        let credentialStoreError: string | null = null;
+        if (!envKey) {
+          try {
+            apiKey = await getApiKey(project);
+          } catch (err) {
+            // A broken credential store (keytar installed without its full API, an unreadable
+            // credentials file) is exactly what doctor exists to diagnose: report it as the Auth
+            // check and run the rest. A keychain timeout is the exception: the native call is
+            // still blocked, so the process cannot exit normally, and wrapCommand has to end it.
+            if (err instanceof KeychainTimeoutError) throw err;
+            credentialStoreError = err instanceof Error ? err.message : String(err);
+          }
+        }
+        if (credentialStoreError) {
+          checks.push({
+            name: "Auth",
+            status: "fail",
+            message: `Credential store unusable: ${credentialStoreError}`,
+            fix: "export WAVE_API_KEY=...  (or WAVE_CREDENTIAL_STORE=file, then wave auth login)",
+          });
+        } else if (envKey) {
           checks.push({
             name: "Auth",
             status: "pass",

@@ -42,7 +42,9 @@ All notable changes to this project are documented here. The format is based on
     hang with no output. It now fails with what to do instead (`WAVE_API_KEY`, or
     `WAVE_CREDENTIAL_STORE=file`) and exits 137: Node cannot exit normally while the native
     keychain call is still blocked. `wave doctor` no longer reads the keychain when
-    `WAVE_API_KEY` is set.
+    `WAVE_API_KEY` is set, and a credential store it cannot use (an incomplete keytar, a
+    credentials file that does not parse) is reported as a failed Auth check alongside the
+    rest of the report instead of aborting it.
 - **One credential and host resolution for every command** (`WAVE_API_KEY`, then the stored key;
   `WAVE_BASE_URL`, then the project's `baseUrl`, then `https://api.wave.online`). `whoami`,
   `auth status`, `status`, `api`, `billing` and `link` read the keychain only, so CI users with
