@@ -17,25 +17,29 @@ interface TemplateDefinition {
   name: string;
   /** Short description shown alongside the name */
   description: string;
-  /** Directory name under packages/cli/templates/ */
+  /** Directory name under templates/ */
   dirName: string;
+  /**
+   * Set when the template's API calls target routes not confirmed served today: it scaffolds and
+   * type-checks, but its calls can fail (ROUTE_NOT_FOUND) until the routes are served. Shown in
+   * the picker and printed after scaffolding, so nobody finds out from a runtime 404.
+   */
+  preview?: string;
 }
 
-const TEMPLATES: TemplateDefinition[] = [
+const STREAMS_PREVIEW =
+  "Preview: it creates a live stream (/v1/streams), which the WAVE API does not serve yet, so its " +
+  "first call fails with ROUTE_NOT_FOUND until that route is live.";
+
+/**
+ * The templates `wave init` offers. `blank` and `api-integration` call served routes (GET
+ * /v1/billing, /v1/billing/usage) and run end to end today; the rest are marked preview.
+ */
+export const TEMPLATES: TemplateDefinition[] = [
   {
-    name: "WebRTC Quickstart",
-    description: "Browser-based live streaming with WebRTC",
-    dirName: "webrtc-demo",
-  },
-  {
-    name: "SRT Ingest",
-    description: "Low-latency SRT ingest for professional streaming",
-    dirName: "srt-contribution",
-  },
-  {
-    name: "Webhook Handler",
-    description: "Express server handling WAVE webhooks",
-    dirName: "webhook-handler",
+    name: "Blank",
+    description: "Minimal project: authenticate and make one API call",
+    dirName: "blank",
   },
   {
     name: "API Integration",
@@ -43,21 +47,88 @@ const TEMPLATES: TemplateDefinition[] = [
     dirName: "api-integration",
   },
   {
-    name: "Studio Plugin",
-    description: "Studio plugin for custom production features",
-    dirName: "studio-plugin",
+    name: "WebRTC Quickstart",
+    description: "Browser-based live streaming with WebRTC",
+    dirName: "webrtc-demo",
+    preview: STREAMS_PREVIEW,
+  },
+  {
+    name: "SRT Ingest",
+    description: "Low-latency SRT ingest for professional streaming",
+    dirName: "srt-contribution",
+    preview: STREAMS_PREVIEW,
+  },
+  {
+    name: "Multi-Camera",
+    description: "Multi-camera production with scenes",
+    dirName: "multi-camera",
+    preview:
+      "Preview: it drives a Studio production (/v1/productions). That route is gated " +
+      "(productions:write) and not yet confirmed served, so its calls may fail until it is.",
+  },
+  {
+    name: "Podcast",
+    description: "Audio-first recording with transcription",
+    dirName: "podcast",
+    preview: STREAMS_PREVIEW,
   },
 ];
 
 /**
- * Resolves the absolute path to the templates directory.
- * Works both in development (src/) and built (dist/) environments.
+ * Template directories that ship but are not offered, with the reason. Each calls an SDK method
+ * that does not exist in @wave-av/sdk, so the generated project could neither compile nor run.
+ * `--template <name>` explains instead of reporting an unknown template.
  */
-function getTemplatesDir(): string {
-  const thisFile = fileURLToPath(import.meta.url);
-  // Walk up from src/commands/init/ or dist/commands/init/ to package root
-  const packageRoot = resolve(dirname(thisFile), "..", "..", "..");
-  return join(packageRoot, "templates");
+export const WITHHELD_TEMPLATES: Record<string, string> = {
+  "webhook-handler":
+    "it verifies signatures with `wave.webhooks.verify`, which @wave-av/sdk does not provide. " +
+    "List your org's subscriptions with `wave webhook-subscriptions list` meanwhile.",
+  "studio-plugin":
+    "it calls `wave.studio.registerPlugin` / `wave.studio.connect`, which neither @wave-av/sdk " +
+    "nor the WAVE API provides.",
+};
+
+/** tsconfig.json for a generated project (no template ships one, so `npm run build` had no config). */
+const PROJECT_TSCONFIG = {
+  compilerOptions: {
+    target: "ES2022",
+    module: "NodeNext",
+    moduleResolution: "NodeNext",
+    strict: true,
+    esModuleInterop: true,
+    skipLibCheck: true,
+    types: ["node"],
+    outDir: "dist",
+    rootDir: "src",
+  },
+  include: ["src"],
+};
+
+/**
+ * Finds the package's templates/ directory by walking up from this module to the first ancestor
+ * that holds both package.json and templates/. The layout differs by build: tsup bundles every
+ * command into dist/index.js (package root = one level up), while tests and `tsx` run this file
+ * from src/commands/init/ (three levels up). 1.0.10 hard-coded three levels, so the published
+ * CLI looked in <prefix>/lib/node_modules/templates, found nothing, and silently scaffolded an
+ * empty project with no package.json.
+ *
+ * Throws instead of returning a guess: a missing templates/ is a packaging bug to surface.
+ */
+export function findTemplatesDir(startDir = dirname(fileURLToPath(import.meta.url))): string {
+  let dir = resolve(startDir);
+  for (let i = 0; i < 6; i++) {
+    const candidate = join(dir, "templates");
+    if (existsSync(join(dir, "package.json")) && existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(
+    `WAVE CLI templates directory not found above ${startDir}. The installation is incomplete; ` +
+      "reinstall with `npm install -g @wave-av/cli`.",
+  );
 }
 
 /**
@@ -79,16 +150,34 @@ async function copyDir(src: string, dest: string): Promise<void> {
 }
 
 /**
- * Rewrites the "name" field in a template's package.json to match the project name.
+ * Rewrites the "name" field in a template's package.json to match the project name, and adds the
+ * Node type definitions the generated tsconfig.json asks for (the templates read process.env).
  */
-async function rewritePackageName(projectDir: string, projectName: string): Promise<void> {
+async function finalizePackageJson(projectDir: string, projectName: string): Promise<void> {
   const pkgPath = join(projectDir, "package.json");
   if (!existsSync(pkgPath)) return;
 
   const raw = await readFile(pkgPath, "utf-8");
   const pkg = JSON.parse(raw) as Record<string, unknown>;
   pkg["name"] = projectName;
+  const devDependencies = { ...((pkg["devDependencies"] as Record<string, string> | undefined) ?? {}) };
+  devDependencies["@types/node"] ??= "^22";
+  pkg["devDependencies"] = devDependencies;
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+}
+
+/** Resolve `--template <value>` (directory name or kebab-cased display name). */
+export function resolveTemplate(value: string): TemplateDefinition {
+  const match = TEMPLATES.find(
+    (t) => t.dirName === value || t.name.toLowerCase().replace(/\s+/g, "-") === value,
+  );
+  if (match) return match;
+  const withheld = WITHHELD_TEMPLATES[value];
+  if (withheld) {
+    throw new Error(`Template "${value}" is not available yet: ${withheld}`);
+  }
+  const valid = TEMPLATES.map((t) => t.dirName).join(", ");
+  throw new Error(`Unknown template "${value}". Available templates: ${valid}`);
 }
 
 export function registerInitCommands(program: Command): void {
@@ -103,21 +192,10 @@ export function registerInitCommands(program: Command): void {
         let selectedTemplate: TemplateDefinition;
 
         if (opts.template) {
-          const match = TEMPLATES.find(
-            (t) =>
-              t.dirName === opts.template ||
-              t.name.toLowerCase().replace(/\s+/g, "-") === opts.template,
-          );
-          if (!match) {
-            const valid = TEMPLATES.map((t) => t.dirName).join(", ");
-            throw new Error(
-              `Unknown template "${opts.template}". Available templates: ${valid}`,
-            );
-          }
-          selectedTemplate = match;
+          selectedTemplate = resolveTemplate(opts.template);
         } else {
           const choices = TEMPLATES.map((t) => ({
-            name: `${t.name} - ${t.description}`,
+            name: `${t.name} - ${t.description}${t.preview ? " (preview)" : ""}`,
             value: t,
           }));
           selectedTemplate = await promptSelect<TemplateDefinition>(
@@ -143,41 +221,41 @@ export function registerInitCommands(program: Command): void {
         );
 
         // 3. Scaffold the project from template files
-        const templatesDir = getTemplatesDir();
-        const templateDir = join(templatesDir, selectedTemplate.dirName);
+        const templatesDir = findTemplatesDir();
+        const templateDir = resolve(templatesDir, selectedTemplate.dirName);
 
         // Validate template directory exists and is within templates root
-        const resolvedTemplateDir = resolve(templateDir);
-        const resolvedTemplatesRoot = resolve(templatesDir);
-        if (!resolvedTemplateDir.startsWith(resolvedTemplatesRoot)) {
+        if (!templateDir.startsWith(resolve(templatesDir))) {
           throw new Error("Invalid template path");
         }
-
-        const templateExists = existsSync(resolvedTemplateDir);
+        if (!existsSync(join(templateDir, "package.json"))) {
+          throw new Error(
+            `Template "${selectedTemplate.dirName}" is missing from this installation (${templateDir}). ` +
+              "Reinstall with `npm install -g @wave-av/cli`.",
+          );
+        }
 
         await withSpinner(`Creating ${projectName}/`, async () => {
-          if (templateExists) {
-            // Copy template files into the new project directory
-            await copyDir(resolvedTemplateDir, dir);
-          } else {
-            // Fallback: create minimal scaffold if template dir missing
-            await mkdir(join(dir, "src"), { recursive: true });
-          }
+          await copyDir(templateDir, dir);
 
           // Rewrite package.json name to match project name
-          await rewritePackageName(dir, projectName);
+          await finalizePackageJson(dir, projectName);
 
-          // Generate wave.config.ts
-          const configContent = `import { defineConfig } from "@wave-av/sdk";
+          // tsconfig.json: `npm run build` runs tsc, and no template ships a config for it.
+          if (!existsSync(join(dir, "tsconfig.json"))) {
+            await writeFile(
+              join(dir, "tsconfig.json"),
+              JSON.stringify(PROJECT_TSCONFIG, null, 2) + "\n",
+              "utf-8",
+            );
+          }
 
-export default defineConfig({
-  project: "${projectName}",
-  template: "${selectedTemplate.dirName}",
-  streaming: {
-    protocol: "webrtc",
-    fallback: ["srt", "rtmp"],
-  },
-});
+          // Generate wave.config.ts. Plain data: @wave-av/sdk exports no defineConfig (1.0.10 imported
+          // one, so the generated project failed to type-check).
+          const configContent = `export default {
+  project: ${JSON.stringify(projectName)},
+  template: ${JSON.stringify(selectedTemplate.dirName)},
+} as const;
 `;
           await writeFile(join(dir, "wave.config.ts"), configContent, "utf-8");
 
@@ -193,17 +271,17 @@ dist/
           // Generate README.md
           const readmeContent = `# ${projectName}
 
-Created with [WAVE CLI](https://docs.wave.online/cli) using the **${selectedTemplate.name}** template.
+Created with [WAVE CLI](https://docs.wave.online/docs/cli) using the **${selectedTemplate.name}** template.
 
 ## Getting Started
 
 \`\`\`bash
-# Set your API key
-cp .env.example .env.local
-# Edit .env.local with your WAVE API key from https://wave.online/dashboard/settings/api-keys
-
 # Install dependencies
 npm install
+
+# Your WAVE API key (create one in the console: https://console.wave.online).
+# The project reads WAVE_API_KEY from the environment; .env.example lists the variables it uses.
+export WAVE_API_KEY=wave_live_...
 
 # Run the project
 npm run dev
@@ -213,12 +291,15 @@ npm run dev
 
 - [WAVE Documentation](https://docs.wave.online)
 - [API Reference](https://docs.wave.online/api)
-- [SDK Reference](https://docs.wave.online/sdk)
+- [CLI Reference](https://docs.wave.online/docs/cli)
 `;
           await writeFile(join(dir, "README.md"), readmeContent, "utf-8");
         });
 
         console.log(chalk.green(`  Created ${projectName}/`));
+        if (selectedTemplate.preview) {
+          console.log(chalk.yellow(`\n  ${selectedTemplate.preview}`));
+        }
 
         // 4. Optionally install dependencies
         if (opts.install) {
@@ -246,7 +327,7 @@ npm run dev
         if (!opts.install) {
           console.log(`  npm install`);
         }
-        console.log(`  wave login`);
+        console.log(`  export WAVE_API_KEY=wave_live_...   (the project reads the key from the environment)`);
         console.log(`  npm run dev\n`);
       }),
     );

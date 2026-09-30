@@ -1,6 +1,6 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
-import { Wave } from "@wave/sdk";
+import { Wave } from "@wave-av/sdk";
 
 const wave = new Wave({
   apiKey: process.env.WAVE_API_KEY!,

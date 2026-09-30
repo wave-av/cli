@@ -1,4 +1,4 @@
-import { Wave } from "@wave/sdk";
+import { Wave } from "@wave-av/sdk";
 
 const wave = new Wave({
   apiKey: process.env.WAVE_API_KEY!,
@@ -16,13 +16,13 @@ async function main() {
   // Add camera sources
   const cam1 = await wave.studio.addSource(production.id, {
     type: "camera",
-    label: "Camera 1 - Wide",
+    name: "Camera 1 - Wide",
     url: "rtmp://localhost/live/cam1",
   });
 
   const cam2 = await wave.studio.addSource(production.id, {
     type: "camera",
-    label: "Camera 2 - Close-up",
+    name: "Camera 2 - Close-up",
     url: "rtmp://localhost/live/cam2",
   });
 
@@ -31,12 +31,12 @@ async function main() {
   // Create scenes
   const fullscreen = await wave.studio.createScene(production.id, {
     name: "Fullscreen",
-    layout: "single",
+    layout: "fullscreen",
   });
 
   const sideBySide = await wave.studio.createScene(production.id, {
     name: "Side by Side",
-    layout: "split",
+    layout: "side_by_side",
   });
 
   console.log(`Scenes created: ${fullscreen.id}, ${sideBySide.id}`);

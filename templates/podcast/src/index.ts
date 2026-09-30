@@ -1,4 +1,4 @@
-import { Wave } from "@wave/sdk";
+import { Wave } from "@wave-av/sdk";
 
 const wave = new Wave({
   apiKey: process.env.WAVE_API_KEY!,
@@ -22,7 +22,8 @@ async function main() {
   // After recording, generate transcription
   console.log("Generating transcription...");
   const transcription = await wave.transcribe.create({
-    recording_id: recording.id,
+    source_type: "recording",
+    source_id: recording.id,
     language: "en",
     model: "enhanced",
   });

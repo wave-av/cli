@@ -8,7 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@wave/sdk": "^2.0.0",
+    "@wave-av/sdk": "^2.1.3",
     "express": "^4.21.0",
     "express-rate-limit": "^7.4.0"
   },
