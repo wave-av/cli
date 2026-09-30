@@ -1,0 +1,30 @@
+src/lib/fs-lock.ts
+  s_13ccc7d9001218::t_cfd9c3148f3d79 92
+  s_13ccc7d9001218::t_ca6900940e1704 151-158,160,162,165-176,182
+  s_13ccc7d9001218::t_5f04f8d70dea86 37-38,40,47,49-50,53,55,58-91,93-104,106-109,111-115,119-129
+  s_13ccc7d9001218::t_b422cd90c33d80 216-221,224-225
+  s_13ccc7d9001218::t_b08c38a13a0640 4
+  s_13ccc7d9001218::t_0fd87d524e549b 222-223
+  s_13ccc7d9001218::t_1bee629128e0d2 14,18-23
+  s_13ccc7d9001218::t_7d029f24e36ee5 130
+src/lib/fs-lock.test.ts
+  s_13ccc7d9001218::t_b177b75ea4703e 1-10,13,18-22
+  s_13ccc7d9001218::t_8e4caa76bfbc54 98-167
+  s_13ccc7d9001218::t_1801c42f85f8bc 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "135723507a2d6249089cb4ab86c30d6890b1566a",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
