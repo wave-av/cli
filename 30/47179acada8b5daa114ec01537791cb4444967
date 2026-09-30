@@ -1,0 +1,23 @@
+src/lib/errors.test.ts
+  s_13ccc7d9001218::t_18aa7e655fc61b 4-5
+  s_13ccc7d9001218::t_54394f4647d767 86-103
+  s_13ccc7d9001218::t_92cd04536cc496 104
+src/lib/errors.ts
+  s_13ccc7d9001218::t_e60a518ccc36d0 96,121-122,135,144,225-226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "3047179acada8b5daa114ec01537791cb4444967",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
