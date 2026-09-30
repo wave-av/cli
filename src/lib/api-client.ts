@@ -9,14 +9,15 @@ export async function getClient(opts?: { org?: string; project?: string }): Prom
   // WAVE_API_KEY first, then the key `wave auth login` stored. A stored key with no saved project
   // entry is fine: the gateway resolves the org from the key, and the host defaults to the API.
   // 1.0.10 exited with 'No project "default" configured' here, so a freshly stored key was unusable.
-  const creds = await resolveCredentials({ project: opts?.project });
+  // Organization: --org, then WAVE_ORG_ID, then the project's saved org (resolved there too).
+  const creds = await resolveCredentials({ project: opts?.project, org: opts?.org });
   if (!creds) {
     throw new AuthRequiredError();
   }
 
   const client = new Wave({
     apiKey: creds.apiKey,
-    organizationId: opts?.org ?? creds.organizationId,
+    organizationId: creds.organizationId,
     baseUrl: creds.baseUrl,
     customHeaders: {
       "X-Wave-Source": "cli",

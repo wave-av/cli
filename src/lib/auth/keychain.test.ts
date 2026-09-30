@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, statSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ import {
   getRefreshToken,
   deleteAllKeys,
   useKeytarForTests,
+  simulateKeytarImportForTests,
 } from "./keychain.js";
 
 /**
@@ -35,7 +36,7 @@ describe("resolveKeytarModule", () => {
     expect(resolveKeytarModule(fullKeytar)).toBe(fullKeytar);
   });
 
-  it("rejects a partial module so the caller falls back to the file store instead of crashing", () => {
+  it("rejects a partial module (never used half-working; see 'keychain module selection')", () => {
     expect(resolveKeytarModule({ getPassword: fn })).toBeNull();
     expect(resolveKeytarModule({ default: { getPassword: fn, setPassword: fn } })).toBeNull();
     expect(resolveKeytarModule(null)).toBeNull();
@@ -125,6 +126,66 @@ describe("file credential store (WAVE_CREDENTIAL_STORE=file)", () => {
     await deleteAllKeys();
     expect(await getApiKey("a")).toBeNull();
     expect(await getApiKey("b")).toBeNull();
+  });
+
+  it("concurrent writers do not drop each other's secrets (the read-modify-write is locked)", async () => {
+    const projects = Array.from({ length: 12 }, (_, i) => `p${i}`);
+    await Promise.all(projects.flatMap((p) => [storeApiKey(p, `key_${p}`), storeRefreshToken(p, `refresh_${p}`)]));
+    for (const p of projects) {
+      expect(await getApiKey(p)).toBe(`key_${p}`);
+      expect(await getRefreshToken(p)).toBe(`refresh_${p}`);
+    }
+    // No lock or temp file is left behind.
+    expect(readdirSync(join(home, ".wave")).sort()).toEqual(["credentials.json"]);
+  });
+
+  it("a corrupt credentials file is reported and never overwritten", async () => {
+    const dir = join(home, ".wave");
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, "credentials.json");
+    writeFileSync(file, "{not json");
+    await expect(getApiKey("default")).rejects.toThrow(/not a valid credentials file/);
+    await expect(storeApiKey("default", "k")).rejects.toThrow(/not a valid credentials file/);
+    expect(readFileSync(file, "utf-8")).toBe("{not json");
+  });
+});
+
+describe("keychain module selection", () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "wave-cli-kt-"));
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    vi.stubEnv("WAVE_CREDENTIAL_STORE", "");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    resetKeytarCacheForTests();
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("refuses a keytar that loads without its full API, instead of silently storing plaintext", async () => {
+    simulateKeytarImportForTests({ mod: { getPassword: fn } });
+    await expect(storeApiKey("default", "k")).rejects.toThrow(/does not provide setPassword.*WAVE_CREDENTIAL_STORE=file/s);
+    expect(existsSync(join(home, ".wave", "credentials.json"))).toBe(false);
+  });
+
+  it("falls back to the 0600 file when no keychain can load, and says so once on stderr", async () => {
+    const notes: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation(((chunk: string) => {
+      notes.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write);
+    simulateKeytarImportForTests({ loadError: new Error("libsecret-1.so.0: cannot open shared object file") });
+    expect(await credentialBackend()).toBe("file");
+    await storeApiKey("a", "k1");
+    await storeApiKey("b", "k2");
+    expect(await getApiKey("b")).toBe("k2");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatch(/keychain is unavailable \(libsecret-1\.so\.0.*credentials\.json \(mode 0600\)/);
   });
 });
 

@@ -2,6 +2,18 @@ import chalk from "chalk";
 import { WaveError, RateLimitError } from "@wave-av/sdk";
 import { EXIT_CODES } from "./exit-codes.js";
 import { detectEnvironment } from "./environment.js";
+import { sanitizeForTerminal } from "./terminal.js";
+
+/**
+ * Local configuration the CLI refuses to use or overwrite: an unreadable or malformed
+ * ~/.wave/config.json, or an API base URL that would send credentials without TLS. Exit 9.
+ */
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigError";
+  }
+}
 
 /** 128 + SIGKILL: how a process ends after a keychain timeout (see wrapCommand). */
 export const KEYCHAIN_TIMEOUT_EXIT_STATUS = 137;
@@ -95,9 +107,18 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
     }
     const lines = [
       chalk.yellow(message),
-      error.requestId ? chalk.dim(`  Request ID: ${error.requestId}`) : "",
+      error.requestId ? chalk.dim(`  Request ID: ${sanitizeForTerminal(error.requestId)}`) : "",
     ].filter(Boolean);
     return { message: lines.join("\n"), exitCode };
+  }
+
+  if (error instanceof ConfigError) {
+    const exitCode = EXIT_CODES.CONFIG_ERROR;
+    if (env.preferJson) {
+      const structured = toStructuredError("CONFIG_ERROR", error.message, exitCode, []);
+      return { message: JSON.stringify(structured, null, 2), exitCode };
+    }
+    return { message: chalk.red(error.message), exitCode };
   }
 
   if (error instanceof KeychainTimeoutError) {
@@ -172,10 +193,11 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       return { message: getAuthSuggestions(), exitCode };
     }
 
+    // Message, code and request ID come from the response body: never let them drive the terminal.
     const lines = [
-      chalk.red(error.message),
-      chalk.dim(`  Code: ${error.code} | Status: ${error.statusCode}`),
-      error.requestId ? chalk.dim(`  Request ID: ${error.requestId}`) : "",
+      chalk.red(sanitizeForTerminal(error.message)),
+      chalk.dim(`  Code: ${sanitizeForTerminal(error.code)} | Status: ${error.statusCode}`),
+      error.requestId ? chalk.dim(`  Request ID: ${sanitizeForTerminal(error.requestId)}`) : "",
       error.retryable ? chalk.yellow("  This error is retryable.") : "",
     ].filter(Boolean);
 
@@ -193,7 +215,7 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       return { message: JSON.stringify(structured, null, 2), exitCode: EXIT_CODES.GENERAL_ERROR };
     }
     return {
-      message: chalk.red(`Error: ${error.message}`),
+      message: chalk.red(`Error: ${sanitizeForTerminal(error.message)}`),
       exitCode: EXIT_CODES.GENERAL_ERROR,
     };
   }
@@ -202,6 +224,11 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
     message: chalk.red(`Unexpected error: ${String(error)}`),
     exitCode: EXIT_CODES.GENERAL_ERROR,
   };
+}
+
+/** The exit code a failure maps to, for commands that print their own error output (`wave api`). */
+export function exitCodeFor(error: unknown): number {
+  return formatCLIError(error).exitCode;
 }
 
 export function wrapCommand<T extends unknown[]>(

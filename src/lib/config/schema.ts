@@ -1,8 +1,10 @@
 import { z } from "zod";
 
-// organizationId/organizationName are optional: `wave auth login` creates the project entry before
-// anything has told the CLI which org the key belongs to (the gateway resolves the org from the key
-// itself). `wave link` / `wave whoami` fill them in when a served route reports them.
+// organizationId/organizationName are optional: `wave auth login` creates the project entry (and
+// clears any cached org, since a new key may belong to another org) before anything has told the
+// CLI which org the key belongs to; the gateway resolves the org from the key itself. `wave link`
+// records organizationId once a served route reports it. Nothing writes organizationName today;
+// configs from earlier versions may carry it.
 const projectConfigSchema = z.object({
   organizationId: z.string().optional(),
   organizationName: z.string().optional(),

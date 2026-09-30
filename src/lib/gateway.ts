@@ -14,6 +14,8 @@ export interface GatewayRequestInit {
   query?: Record<string, string | number | undefined>;
   body?: unknown;
   project?: string;
+  /** The global `--org` flag; sent as x-organization-id ahead of WAVE_ORG_ID and the saved org. */
+  org?: string;
   /** Pre-resolved credentials (skips a second keychain/config read). */
   credentials?: ResolvedCredentials;
 }
@@ -60,7 +62,7 @@ export function toGatewayError(
 }
 
 export async function gatewayFetch<T = unknown>(path: string, init: GatewayRequestInit = {}): Promise<T> {
-  const creds = init.credentials ?? (await resolveCredentials({ project: init.project }));
+  const creds = init.credentials ?? (await resolveCredentials({ project: init.project, org: init.org }));
   if (!creds) throw new AuthRequiredError();
 
   const url = new URL(`${creds.baseUrl}${path.startsWith("/") ? path : `/${path}`}`);
