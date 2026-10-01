@@ -42,7 +42,9 @@ All notable changes to this project are documented here. The format is based on
   - `wave login` / `wave logout` exist as aliases (README, `wave doctor` and error hints all
     told users to run `wave login`, which answered `unknown command 'login'`). The
     `--project-name` flag the README documented never existed; use the global `--project`.
-  - Keychain calls are bounded (60s, `WAVE_KEYCHAIN_TIMEOUT_MS` overrides). A locked macOS login
+  - Keychain calls are bounded (60s, `WAVE_KEYCHAIN_TIMEOUT_MS` overrides, capped at Node's timer
+    limit of about 24.8 days: a larger value such as `1e15` used to fail every keychain call after
+    1 ms, because Node runs an oversized timer immediately). A locked macOS login
     keychain that nobody can unlock (locked screen, headless session) made `auth login --api-key`
     hang with no output. It now fails with what to do instead (`WAVE_API_KEY`, or
     `WAVE_CREDENTIAL_STORE=file`) and exits 137: Node cannot exit normally while the native

@@ -168,7 +168,7 @@ unserved route).
 | `WAVE_OUTPUT_FORMAT`  | Override output format            |
 | `WAVE_BASE_URL`       | Override API base URL (default `https://api.wave.online`; `https://` only, `http://` for localhost) |
 | `WAVE_CREDENTIAL_STORE=file` | Store credentials in `~/.wave/credentials.json` instead of the OS keychain |
-| `WAVE_KEYCHAIN_TIMEOUT_MS` | How long to wait on a locked OS keychain before failing (default 60000) |
+| `WAVE_KEYCHAIN_TIMEOUT_MS` | How long to wait on a locked OS keychain before failing (default 60000, max 2147483647) |
 | `WAVE_NO_COLOR=1`     | Disable colors                    |
 | `WAVE_NO_TELEMETRY=1` | Disable telemetry                 |
 

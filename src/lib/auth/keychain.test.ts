@@ -242,4 +242,23 @@ describe("OS keychain that never answers (locked keychain, headless session)", (
     await storeApiKey("default", "wave_test_example_key");
     expect(await getApiKey("default")).toBe("wave_test_example_key");
   });
+
+  it.each(["1e15", "Infinity"])("caps an override of %s at the Node timer limit instead of timing out at once", async (override) => {
+    // Node turns a delay above 2^31-1 ms into 1 ms. Uncapped, a 1e15 override failed a keychain that
+    // answers in 50ms with "did not answer within 1000000000000s".
+    vi.stubEnv("WAVE_KEYCHAIN_TIMEOUT_MS", override);
+    const slow = <T>(value: T) => new Promise<T>((done) => setTimeout(() => done(value), 50));
+    let stored = "";
+    useKeytarForTests({
+      setPassword: async (_s, _a, v) => {
+        await slow(undefined);
+        stored = v;
+      },
+      getPassword: async () => slow(stored || null),
+      deletePassword: async () => slow(true),
+      findCredentials: async () => slow([]),
+    });
+    await storeApiKey("default", "wave_test_example_key");
+    expect(await getApiKey("default")).toBe("wave_test_example_key");
+  });
 });

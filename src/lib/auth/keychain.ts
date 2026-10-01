@@ -110,9 +110,17 @@ export async function credentialBackend(): Promise<"keychain" | "file"> {
 /** Long enough for a person to answer the OS "allow access" prompt; `WAVE_KEYCHAIN_TIMEOUT_MS` overrides. */
 const DEFAULT_KEYCHAIN_TIMEOUT_MS = 60_000;
 
+/**
+ * The longest delay a Node timer honors (2^31-1 ms, about 24.8 days). Node replaces anything larger
+ * with 1 ms, so an override meant as "wait as long as it takes" (say 1e15) would instead fail every
+ * keychain call at once. Larger values, `Infinity` included, are capped here.
+ */
+const MAX_TIMER_MS = 2_147_483_647;
+
 function keychainTimeoutMs(): number {
   const raw = Number(process.env["WAVE_KEYCHAIN_TIMEOUT_MS"]);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_KEYCHAIN_TIMEOUT_MS;
+  // NaN (unset or not a number), zero and negatives keep the default.
+  return raw > 0 ? Math.min(raw, MAX_TIMER_MS) : DEFAULT_KEYCHAIN_TIMEOUT_MS;
 }
 
 /**
