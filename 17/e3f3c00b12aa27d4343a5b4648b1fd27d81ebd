@@ -1,0 +1,23 @@
+src/commands/doctor/index.test.ts
+  s_ccb6707bff918a::t_edca357bd29f0a 73,96
+src/lib/mask.test.ts
+  s_ccb6707bff918a::t_41a9b87811303c 2,9,11-12,14-20,23-27,31,34-38
+src/lib/mask.ts
+  s_ccb6707bff918a::t_b409e7c6833a95 5-15,18-19,21-22,25,27,30-31,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "17e3f3c00b12aa27d4343a5b4648b1fd27d81ebd",
+  "prompts": {},
+  "sessions": {
+    "s_ccb6707bff918a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "377971b7-643f-4d7f-8eba-25a154eadc25",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

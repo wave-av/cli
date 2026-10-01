@@ -1,0 +1,23 @@
+src/lib/auth/device-flow.test.ts
+  s_13ccc7d9001218::t_60988400a802c8 107-132
+src/lib/auth/device-flow.ts
+  s_13ccc7d9001218::t_af6543231e20a1 141-145
+  s_13ccc7d9001218::t_088eb0e2a7fc15 26-27,32-34
+  s_13ccc7d9001218::t_89aad92c9e189d 28-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "1021614be877740733239f430e12c38541d99c46",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

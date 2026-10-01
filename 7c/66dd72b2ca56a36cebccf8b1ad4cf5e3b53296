@@ -1,0 +1,24 @@
+scripts/ga/check-SUPPLY-001.sh
+  s_efe86faf2558e9::t_dda1f465068996 14-17
+  s_efe86faf2558e9::t_9c7cc5b4157711 165-172,174-192
+.github/workflows/_release-sbom.yml
+  s_efe86faf2558e9::t_8797081af63cae 163-170,172-195
+  s_efe86faf2558e9::t_296eeaace9def6 5-8
+  s_efe86faf2558e9::t_155d65ee3c2679 85-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "7c66dd72b2ca56a36cebccf8b1ad4cf5e3b53296",
+  "prompts": {},
+  "sessions": {
+    "s_efe86faf2558e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b6e2e9-ab55-4d57-9d9f-d57a588ae688",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

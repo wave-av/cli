@@ -1,0 +1,45 @@
+src/commands/compose/index.ts
+  s_3c7b3ef700013e::t_61c865e38f4328 1-90
+src/commands/compose/render.ts
+  s_3c7b3ef700013e::t_e0ea135a0008f0 1-70
+CHANGELOG.md
+  s_3c7b3ef700013e::t_ae643864a494ff 18
+  s_3c7b3ef700013e::t_7d11df6a2d1a1c 15-17
+  s_3c7b3ef700013e::t_62f94333df7f20 19-21
+  s_da16cabb67aef9::t_7f23598c0568af 9-14,22-23
+src/commands/compose/index.test.ts
+  s_3c7b3ef700013e::t_53eee873e7107f 1-163
+src/cli.ts
+  s_3c7b3ef700013e::t_5f4c84e24519a3 120-122
+  s_3c7b3ef700013e::t_2469c23acb3b7e 55
+src/commands/compose/render.test.ts
+  s_3c7b3ef700013e::t_562adf1b9514ee 1-100
+src/commands/compose/types.ts
+  s_3c7b3ef700013e::t_b1d5994c0fa964 1-80
+capabilities.json
+  s_3c7b3ef700013e::t_be4da33d7d275d 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "35d9c9ecf15359d5066cfb1958f7ef6fbadb3712",
+  "prompts": {},
+  "sessions": {
+    "s_3c7b3ef700013e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "996fb707-e2e4-45af-8ec6-8dd33f300698",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    },
+    "s_da16cabb67aef9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3bcb9d4e84e346e6",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

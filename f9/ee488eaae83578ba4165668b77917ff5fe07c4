@@ -1,0 +1,42 @@
+package.json
+  s_13ccc7d9001218::t_20e7a8b58ee1e3 3
+src/lib/unserved.ts
+  s_13ccc7d9001218::t_2d4b6075952876 1-73,79,81-109
+  s_13ccc7d9001218::t_91d29139ecee19 74-78,80
+src/cli.ts
+  s_13ccc7d9001218::t_535be70bf75851 76
+  s_13ccc7d9001218::t_5b5eadf50a7db9 175-180
+  s_13ccc7d9001218::t_25d261eefe6809 93-94
+  s_13ccc7d9001218::t_2f27b9c28f0ac1 59
+CHANGELOG.md
+  s_13ccc7d9001218::t_2ff740f11061b6 9-34,37-46
+  s_13ccc7d9001218::t_3a2c4dca7136ba 47
+src/lib/unserved.test.ts
+  s_13ccc7d9001218::t_3d45ff59897860 134
+  s_13ccc7d9001218::t_95462b0d081ad1 114-122
+  s_13ccc7d9001218::t_a5afa60767bca9 133
+  s_13ccc7d9001218::t_00e20e68c0c32a 77,97,144-183
+  s_13ccc7d9001218::t_0a0281139111e2 74-76
+  s_13ccc7d9001218::t_449f16076a6724 78-80,94-96
+  s_13ccc7d9001218::t_cf6655e5a71202 98-100,111-113
+  s_13ccc7d9001218::t_38fa1319d5472a 123-125,130-132
+  s_13ccc7d9001218::t_73cebb0d6b0735 135-137,141-143
+  s_13ccc7d9001218::t_6208f2e480fdbb 184-186
+  s_13ccc7d9001218::t_4a1bdfdd467e4a 1-73,81-93,101-110,126-129,138-140,187-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "f9ee488eaae83578ba4165668b77917ff5fe07c4",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

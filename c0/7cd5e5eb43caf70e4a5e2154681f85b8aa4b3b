@@ -1,0 +1,28 @@
+src/commands/vault/index.ts
+  s_418f585ff58cb5::t_0ae0db3465e8cc 3,9-24,28,35-37,41,43-45,56,73,78-80,84,90-91,93-107,109
+src/commands/phone/index.ts
+  s_418f585ff58cb5::t_4b89e1c55091f8 14-16,20,22-24,37-40,44-47,60-61,66-76,86,92-113,115,118,122-136,142-154
+  s_418f585ff58cb5::t_c6f6d85bdde25e 155-156
+src/commands/studio/index.ts
+  s_418f585ff58cb5::t_d282922e50b52c 163-169,173,175-177
+  s_418f585ff58cb5::t_f662775bf91723 111,120-121,125,127,140
+  s_418f585ff58cb5::t_5cc1bf2ec0e271 3,8-37
+  s_418f585ff58cb5::t_14830a696e5675 155
+  s_418f585ff58cb5::t_45beb7b9d61ebb 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "c07cd5e5eb43caf70e4a5e2154681f85b8aa4b3b",
+  "prompts": {},
+  "sessions": {
+    "s_418f585ff58cb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e5b410ce-aa9a-48d6-be5d-09400395b1b6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

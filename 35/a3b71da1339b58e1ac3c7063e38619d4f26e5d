@@ -1,0 +1,78 @@
+src/commands/analytics/index.ts
+  s_13ccc7d9001218::t_0b7e7ae16ba4d8 57,59-60
+src/commands/billing/index.ts
+  s_13ccc7d9001218::t_be1f7f8cd369c5 49-50
+  s_13ccc7d9001218::t_982933f8903f4a 64,66-67
+src/commands/listen/index.ts
+  s_13ccc7d9001218::t_ad79e605b3f80e 18-21
+src/lib/auth/device-flow.ts
+  s_13ccc7d9001218::t_38eaad96d18c2d 155
+  s_13ccc7d9001218::t_c58ae27194c2aa 97-107
+  s_13ccc7d9001218::t_2f614830dc3b3d 60,62-71
+  s_13ccc7d9001218::t_0785379604eab7 82
+  s_13ccc7d9001218::t_fd46b08e69fa2f 92
+  s_13ccc7d9001218::t_13796e7a7efb0e 14
+  s_13ccc7d9001218::t_5f3cfe11aa96cb 88
+  s_13ccc7d9001218::t_868b9dd248b56a 38-39,41-43,47-59
+  s_13ccc7d9001218::t_11087705bb7373 16
+  s_13ccc7d9001218::t_28b727b03e7df1 61
+src/commands/connectivity.test.ts
+  s_13ccc7d9001218::t_69ccbd996fc8fb 236-352
+  s_13ccc7d9001218::t_6cb016bcb0e9bb 1-4
+  s_13ccc7d9001218::t_7fb1a55a8f4766 71
+  s_13ccc7d9001218::t_89dc7495f8ada1 353
+src/commands/billing/index.test.ts
+  s_13ccc7d9001218::t_762ed3243930c5 1-31
+src/commands/doctor/index.ts
+  s_13ccc7d9001218::t_b531d8853a5d75 38-40,42,48-49,52-54,58-60,64
+  s_13ccc7d9001218::t_cbfda854f07e81 77,83
+  s_13ccc7d9001218::t_4b736fa56461b4 3-4,6-7
+src/commands/auth/index.ts
+  s_13ccc7d9001218::t_0ba3ec15a14aed 160-161,163
+  s_13ccc7d9001218::t_29628b6506bc2d 175
+  s_13ccc7d9001218::t_bd6bd093c66abb 191-192,194-197,202-205
+  s_13ccc7d9001218::t_6b13082ec09304 28-31,34-67,73-74,77-80,84,86-87
+  s_13ccc7d9001218::t_3ca3868d9734bf 5,7
+  s_13ccc7d9001218::t_9946db37882b17 147
+  s_13ccc7d9001218::t_e08438dc2efc04 221-222,228-233,239-241,245,251,253-256,260-263,276
+src/commands/doctor/index.test.ts
+  s_13ccc7d9001218::t_a5b224667c1ce4 27,32-79,81-90
+  s_13ccc7d9001218::t_4eabbbd20c0d08 80
+  s_13ccc7d9001218::t_63da951d628517 13
+  s_13ccc7d9001218::t_a4e9137786be4a 91
+src/commands/webhook-subscriptions/index.ts
+  s_13ccc7d9001218::t_943544ea63c3fa 28-29
+  s_13ccc7d9001218::t_727edab904c0bb 69,71-72
+  s_13ccc7d9001218::t_04fe7474741141 44,46-47
+src/commands/auth/index.test.ts
+  s_13ccc7d9001218::t_116d76de55c1a3 28
+  s_13ccc7d9001218::t_fe7443298e4fce 62,67
+  s_13ccc7d9001218::t_7fb597deea5033 130-209
+  s_13ccc7d9001218::t_463ff5fad40967 1
+src/commands/api/index.ts
+  s_13ccc7d9001218::t_757fe72c2780e3 42,55-56
+  s_13ccc7d9001218::t_e4138663031dc2 99-100
+  s_13ccc7d9001218::t_63e9ae57fe4069 3,6-7
+  s_13ccc7d9001218::t_f932e986951dad 77-83,85,87-98,101-104,106
+src/commands/link/index.ts
+  s_13ccc7d9001218::t_c7005bf8fad416 62-64
+src/lib/auth/device-flow.test.ts
+  s_13ccc7d9001218::t_5c1c32711ea762 2-5
+  s_13ccc7d9001218::t_c24e6a424ffb42 48-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "35a3b71da1339b58e1ac3c7063e38619d4f26e5d",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

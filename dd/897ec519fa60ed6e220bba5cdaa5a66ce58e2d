@@ -1,0 +1,50 @@
+src/commands/auth/index.ts
+  s_4657dee555390b::t_bef42b173177f2 74,77,82-87
+  s_4657dee555390b::t_15b3eba4672ce5 26-28
+  s_4657dee555390b::t_bcbed59c20c144 107-108
+  s_4657dee555390b::t_14066618fdc17f 120
+  s_4657dee555390b::t_577954cfbbc28c 104
+src/commands/doctor/index.ts
+  s_4657dee555390b::t_589dde9617ede9 141-147
+src/commands/doctor/index.test.ts
+  s_4657dee555390b::t_b7bfeea612717c 1-66
+src/commands/status/index.test.ts
+  s_4657dee555390b::t_8ecd6d98a29955 1-83
+src/cli.test.ts
+  s_4657dee555390b::t_6fce469a8b96d6 2-3,6-7
+  s_4657dee555390b::t_5ae01cc6e2d85a 16
+  s_4657dee555390b::t_1134d2346ba4e8 1,4-5,8-15,17-26
+CHANGELOG.md
+  s_4657dee555390b::t_5cb0fc47e39a6b 8-50
+src/commands/auth/index.test.ts
+  s_4657dee555390b::t_29634cdaf2753b 1-106
+src/cli.ts
+  s_4657dee555390b::t_6f2e9bed656126 92
+  s_4657dee555390b::t_d8127cd1d92bb6 1
+  s_4657dee555390b::t_8108d153bf2a81 58-76
+  s_4657dee555390b::t_3d7e315eef6fa0 103
+src/commands/status/index.ts
+  s_4657dee555390b::t_95a08fd5e172af 17-21,31
+  s_4657dee555390b::t_2bf2ec4110ddc8 70-75
+package.json
+  s_4657dee555390b::t_c6b8c9a0ba3a7e 58
+  s_4657dee555390b::t_ba962fd29a7850 3
+package-lock.json
+  s_4657dee555390b::t_9bf0fec5d74133 1-5344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "dd897ec519fa60ed6e220bba5cdaa5a66ce58e2d",
+  "prompts": {},
+  "sessions": {
+    "s_4657dee555390b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c714314b-1edf-4e54-a112-2a97f2377df1",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

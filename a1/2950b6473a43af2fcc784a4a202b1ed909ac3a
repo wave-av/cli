@@ -1,0 +1,21 @@
+.github/workflows/_release-sbom.yml
+  s_efe86faf2558e9::t_11668ecd1add5f 115-118,175-190,225-228,232,241-250,266-274,276-277
+  s_efe86faf2558e9::t_717307cc087549 275
+  s_efe86faf2558e9::t_d599a130c554e1 33-43,111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "a12950b6473a43af2fcc784a4a202b1ed909ac3a",
+  "prompts": {},
+  "sessions": {
+    "s_efe86faf2558e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2b6e2e9-ab55-4d57-9d9f-d57a588ae688",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

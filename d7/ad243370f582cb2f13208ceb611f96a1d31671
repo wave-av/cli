@@ -1,0 +1,247 @@
+.github/workflows/release.yml
+  s_418f585ff58cb5::t_c97a52dd2f9f3f 184-197
+  s_418f585ff58cb5::t_7d5c74adce3e3f 26-30,36-45,99-100,111,116-120,122-128,130-131,133-134,136-137,167,170,173,175-178,183,198,200,208,216-252,256-261,276,283-287,308-311,373-390,392-394
+  s_418f585ff58cb5::t_bb4074cffa9058 5-20
+.github/workflows/issue-ops-triage.yml
+  s_418f585ff58cb5::t_10a91a2e3b8b98 14,19-20
+.github/workflows/smoke-install.yml
+  s_418f585ff58cb5::t_c127b3868ce335 1-100
+.gitignore
+  s_418f585ff58cb5::t_2c555941eceabd 1-5
+AGENTS.md
+  s_418f585ff58cb5::t_eac93f99cbcb0c 19-49
+CHANGELOG.md
+  s_418f585ff58cb5::t_38c336d0c23175 8-76
+PERMISSIONS.md
+  s_418f585ff58cb5::t_83ecaa963a5873 1-55
+README.md
+  s_418f585ff58cb5::t_dd48a0b920e2b4 3
+RECOVERY.md
+  s_418f585ff58cb5::t_773c6913ab27b1 1-98
+TESTING.md
+  s_418f585ff58cb5::t_13629e42c3e5d5 1-43
+capabilities.json
+  s_418f585ff58cb5::t_9faf5ca723ff1a 2-43
+package-lock.json
+  s_418f585ff58cb5::t_275a99bde0843d 1-5344
+package.json
+  s_418f585ff58cb5::t_80beeb35d45bb9 1-80
+src/cli.test.ts
+  s_418f585ff58cb5::t_308c9667dd4cd5 1-26
+src/cli.ts
+  s_418f585ff58cb5::t_7cc2de9882bf86 1-197
+src/commands/admin/index.ts
+  s_418f585ff58cb5::t_f56de1cf01fb22 1-75
+src/commands/ai/index.ts
+  s_418f585ff58cb5::t_5cb99759d23113 1-54
+src/commands/analytics/index.ts
+  s_418f585ff58cb5::t_ecc73723ac2be2 1-54
+src/commands/api/index.ts
+  s_418f585ff58cb5::t_d1a76fa6e9ab98 1-82
+src/commands/audience/index.ts
+  s_418f585ff58cb5::t_b89908e08d08b1 1-136
+src/commands/auth/index.test.ts
+  s_418f585ff58cb5::t_fc7cf41c1d5afa 1-106
+src/commands/auth/index.ts
+  s_418f585ff58cb5::t_98d46adaebb906 1-150
+src/commands/billing/index.ts
+  s_418f585ff58cb5::t_2a4e28bcdf825a 1-110
+src/commands/captions/index.ts
+  s_418f585ff58cb5::t_72930f7a572145 1-60
+src/commands/chapters/index.ts
+  s_418f585ff58cb5::t_3895f59d8bd8b4 1-57
+src/commands/clips/index.ts
+  s_418f585ff58cb5::t_ceb4a58c5468c5 1-78
+src/commands/collab/index.ts
+  s_418f585ff58cb5::t_98d89889ad3c08 1-71
+src/commands/completion/index.ts
+  s_418f585ff58cb5::t_af9408f7063a0d 1-140
+src/commands/config/index.ts
+  s_418f585ff58cb5::t_61860a5e4756fa 1-94
+src/commands/connect/index.ts
+  s_418f585ff58cb5::t_ada28411316813 1-66
+src/commands/creator/index.ts
+  s_418f585ff58cb5::t_f876c11e852ddd 1-64
+src/commands/desktop/index.ts
+  s_418f585ff58cb5::t_b5801bc1a96058 1-44
+src/commands/dev/index.ts
+  s_418f585ff58cb5::t_580b2b0edbe134 1-256
+src/commands/distribution/index.ts
+  s_418f585ff58cb5::t_526490b7dbba73 1-74
+src/commands/doctor/index.test.ts
+  s_418f585ff58cb5::t_f8de67efd15cbb 1-66
+src/commands/doctor/index.ts
+  s_418f585ff58cb5::t_225cbaf86ed680 1-150
+src/commands/drm/index.ts
+  s_418f585ff58cb5::t_176038d53e52e6 1-146
+src/commands/edge/index.ts
+  s_418f585ff58cb5::t_d1db82b0511716 1-82
+src/commands/editor/index.ts
+  s_418f585ff58cb5::t_9ab25676d9b806 1-58
+src/commands/fleet/index.ts
+  s_418f585ff58cb5::t_9d18f95024c58e 1-66
+src/commands/ghost/index.ts
+  s_418f585ff58cb5::t_6cdbe6c8c6238a 1-51
+src/commands/init/index.ts
+  s_418f585ff58cb5::t_5055050947b7c8 1-253
+src/commands/link/index.ts
+  s_418f585ff58cb5::t_f61fda8f999c6a 1-218
+src/commands/listen/index.ts
+  s_418f585ff58cb5::t_df138ed7a770fe 1-66
+src/commands/logs/index.ts
+  s_418f585ff58cb5::t_471a91b5a17f52 1-90
+src/commands/marketplace/index.ts
+  s_418f585ff58cb5::t_22c64199e0b171 1-65
+src/commands/mesh/index.ts
+  s_418f585ff58cb5::t_859a576ee060c6 1-55
+src/commands/notify/index.ts
+  s_418f585ff58cb5::t_2cf504968c051d 1-88
+src/commands/open/index.ts
+  s_418f585ff58cb5::t_a5d4e34fc3c2e3 1-51
+src/commands/org/index.ts
+  s_418f585ff58cb5::t_a8bc83096d9017 1-73
+src/commands/phone/index.ts
+  s_418f585ff58cb5::t_c8beded8f95b8f 1-86
+src/commands/podcast/index.ts
+  s_418f585ff58cb5::t_47d636f6c79592 1-123
+src/commands/prism/index.ts
+  s_418f585ff58cb5::t_71986b9f22bc90 1-64
+src/commands/qr/index.ts
+  s_418f585ff58cb5::t_01186788bcbb47 1-51
+src/commands/scene/index.ts
+  s_418f585ff58cb5::t_e0185e29d3be5f 1-51
+src/commands/search/index.ts
+  s_418f585ff58cb5::t_29d7fe69f11f06 1-74
+src/commands/sentiment/index.ts
+  s_418f585ff58cb5::t_8a06cf96ff0bb5 1-47
+src/commands/signage/index.ts
+  s_418f585ff58cb5::t_d392b87dcbda68 1-126
+src/commands/slides/index.ts
+  s_418f585ff58cb5::t_55cfb74e1029bc 1-60
+src/commands/status/index.test.ts
+  s_418f585ff58cb5::t_1473286a41433b 1-83
+src/commands/status/index.ts
+  s_418f585ff58cb5::t_4b24ac55d9eb8c 1-78
+src/commands/stream/index.ts
+  s_418f585ff58cb5::t_7facb4de8f9597 1-167
+src/commands/studio/index.ts
+  s_418f585ff58cb5::t_e80988a4a88b31 1-143
+src/commands/transcribe/index.ts
+  s_418f585ff58cb5::t_735da2a172e30f 1-52
+src/commands/trigger/index.ts
+  s_418f585ff58cb5::t_debe6cdf6c30ad 1-71
+src/commands/usb/index.ts
+  s_418f585ff58cb5::t_331d7a1d83d4f4 1-61
+src/commands/vault/index.ts
+  s_418f585ff58cb5::t_93ee1f37317aa7 1-81
+src/commands/voice/index.ts
+  s_418f585ff58cb5::t_a1fa949d6d80f8 1-56
+src/commands/webhook-subscriptions/index.ts
+  s_418f585ff58cb5::t_e38d80506d3e1c 1-100
+src/commands/zoom/index.ts
+  s_418f585ff58cb5::t_b4a10ca4332efd 1-131
+src/index.ts
+  s_418f585ff58cb5::t_7493af1b4b41d9 1-11
+src/lib/api-client.ts
+  s_418f585ff58cb5::t_7d6cc9dee3f20a 1-63
+src/lib/auth/device-flow.ts
+  s_418f585ff58cb5::t_2aeefff1cb9a29 1-154
+src/lib/auth/keychain.ts
+  s_418f585ff58cb5::t_0b131c6701079f 1-111
+src/lib/config/manager.ts
+  s_418f585ff58cb5::t_6b0d007d1e8463 1-54
+src/lib/config/schema.ts
+  s_418f585ff58cb5::t_0a25e11e4ae92f 1-33
+src/lib/environment.ts
+  s_418f585ff58cb5::t_3d2279c3abf2cf 1-66
+src/lib/errors.ts
+  s_418f585ff58cb5::t_4f20eec989791c 1-108
+src/lib/exit-codes.ts
+  s_418f585ff58cb5::t_ddc0bfd9cc508c 1-20
+src/lib/output/confirm.ts
+  s_418f585ff58cb5::t_59ee91438b5c6b 1-20
+src/lib/output/index.ts
+  s_418f585ff58cb5::t_ecdeb25370df82 1-33
+src/lib/output/json.ts
+  s_418f585ff58cb5::t_6f058607f42e9b 1-8
+src/lib/output/spinner.ts
+  s_418f585ff58cb5::t_eed11ff7e3c715 1-18
+src/lib/output/table.ts
+  s_418f585ff58cb5::t_ab0b84acc89c5c 1-45
+src/lib/output/yaml.ts
+  s_418f585ff58cb5::t_f5341a5312a60e 1-5
+src/lib/prompts.ts
+  s_418f585ff58cb5::t_20da396eef8d70 1-123
+src/lib/sse-client.ts
+  s_418f585ff58cb5::t_086fb0bdae8083 1-180
+src/lib/suggestions.ts
+  s_418f585ff58cb5::t_7c052c880125e9 1-96
+templates/api-integration/.env.example
+  s_418f585ff58cb5::t_d43c940ddfa6ee 1-2
+templates/api-integration/package.json
+  s_418f585ff58cb5::t_455a25fc299d1e 1-17
+templates/api-integration/src/index.ts
+  s_418f585ff58cb5::t_58f7a2ec1e3cc4 1-24
+templates/blank/.env.example
+  s_418f585ff58cb5::t_687dcb863a78ea 1
+templates/blank/package.json
+  s_418f585ff58cb5::t_9336fd0abbb358 1-17
+templates/blank/src/index.ts
+  s_418f585ff58cb5::t_88461783c60fb0 1-16
+templates/multi-camera/.env.example
+  s_418f585ff58cb5::t_58e04d59efd08e 1
+templates/multi-camera/package.json
+  s_418f585ff58cb5::t_6e834c93f4f7d2 1-17
+templates/multi-camera/src/index.ts
+  s_418f585ff58cb5::t_52f070e0c2916e 1-49
+templates/podcast/.env.example
+  s_418f585ff58cb5::t_7969bd0e5bdef3 1
+templates/podcast/package.json
+  s_418f585ff58cb5::t_3679c006550458 1-17
+templates/podcast/src/index.ts
+  s_418f585ff58cb5::t_605015ded1d910 1-33
+templates/srt-contribution/.env.example
+  s_418f585ff58cb5::t_6077a75f88ec4a 1
+templates/srt-contribution/package.json
+  s_418f585ff58cb5::t_300c967d6c1da0 1-17
+templates/srt-contribution/src/index.ts
+  s_418f585ff58cb5::t_b7bf2ab2de24eb 1-29
+templates/studio-plugin/.env.example
+  s_418f585ff58cb5::t_b43b8a745b959f 1-2
+templates/studio-plugin/package.json
+  s_418f585ff58cb5::t_e1917f9a174fcb 1-17
+templates/studio-plugin/src/index.ts
+  s_418f585ff58cb5::t_61e582c0607056 1-32
+templates/webhook-handler/.env.example
+  s_418f585ff58cb5::t_264793ac204ee3 1-3
+templates/webhook-handler/package.json
+  s_418f585ff58cb5::t_6766bdff3a8e14 1-19
+templates/webhook-handler/src/index.ts
+  s_418f585ff58cb5::t_1a611167e648c9 1-52
+templates/webrtc-demo/.env.example
+  s_418f585ff58cb5::t_b6f620dc230235 1
+templates/webrtc-demo/package.json
+  s_418f585ff58cb5::t_28c32e9a34dbcd 1-17
+templates/webrtc-demo/src/index.ts
+  s_418f585ff58cb5::t_f2ab56e7c4e26b 1-31
+tsconfig.json
+  s_418f585ff58cb5::t_ee8c4d71f47f83 1-15
+tsup.config.ts
+  s_418f585ff58cb5::t_9939960235e27b 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "d7ad243370f582cb2f13208ceb611f96a1d31671",
+  "prompts": {},
+  "sessions": {
+    "s_418f585ff58cb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e5b410ce-aa9a-48d6-be5d-09400395b1b6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+.github/workflows/release.yml
+  s_418f585ff58cb5::t_b15f411dbe78f9 74,77-78,94,171,174-175,184-185,193-194,314-315,354,357-358,367-368,380,383,408,416-425,428-429,437
+  s_418f585ff58cb5::t_7660322d2178c6 113-114,303-304
+  s_418f585ff58cb5::t_2dc48b884cf561 71-73
+  s_418f585ff58cb5::t_6fc34ad8ca70c8 75-76
+  s_418f585ff58cb5::t_12d46048882df8 79-81,91-93
+  s_418f585ff58cb5::t_1555be8c1ee6bf 95-97
+  s_418f585ff58cb5::t_ca9e3e40cbce69 168-170
+  s_418f585ff58cb5::t_5ac3283e8430ea 172-173
+  s_418f585ff58cb5::t_f04878c5472383 176-178,181-183
+  s_418f585ff58cb5::t_90ba8db39a2982 186-188,190-192
+  s_418f585ff58cb5::t_ef6c1d04b437e5 195-197,300-302
+  s_418f585ff58cb5::t_e9bac77d838e78 305-307,311-313
+  s_418f585ff58cb5::t_8fce72651cd8cd 316-318,351-353
+  s_418f585ff58cb5::t_37dd7c64b361c3 355-356
+  s_418f585ff58cb5::t_c6cf3a9d6b5b99 359-361
+  s_418f585ff58cb5::t_de2d9f9b20967f 366
+  s_418f585ff58cb5::t_8bf638a684870f 369-371
+  s_418f585ff58cb5::t_71901c22e5ffc6 377-379
+  s_418f585ff58cb5::t_26550e17f0a9c1 381
+  s_418f585ff58cb5::t_de5ef469168335 384-386
+  s_418f585ff58cb5::t_617ae48f56fb00 409
+  s_dfce19e1dece45::t_6f8fb47e508e5e 1-3,5-10,12-20,22-45,49,54-57,59-70,82-90,98-103,107,134-136,140-160,164-167,179-180,189,198-299,308-310,319-350,362-364,372-373,375-376,387-388,391-396,398-404,413
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "f914a5c57111d0dc2c7ee9a99bcd5fb2367b560a",
+  "prompts": {},
+  "sessions": {
+    "s_418f585ff58cb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e5b410ce-aa9a-48d6-be5d-09400395b1b6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    },
+    "s_dfce19e1dece45": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad2f53416ee46c904",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

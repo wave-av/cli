@@ -1,0 +1,29 @@
+package-lock.json
+  s_1e0e77646f21c3::t_85ceef4fa2d330 13,15,29,31,899,916,921-924,928-929,932,935,938-941,945,948,951,954-957,961-963,966,969,972-975,979-982,985,988,991-994,998,1001,1007-1010,1014,1017,1641-1777,1779-1790,1792-1795,1797-1809,1814-1817,1821-1822,1825,1828-1831,1835-1836,1843-1844,1847-1850,1854-1855,1905-1907,1911,2278-2280,2283,2387-2389,2392,3260-3271,3513-3524,4384-4386
+package.json
+  s_64461f8e546f15::t_6bf376431ff75f 63,65,76,78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "2424f9ed9be47967925ecd36ecdf8bc7972f8f18",
+  "prompts": {},
+  "sessions": {
+    "s_1e0e77646f21c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab7ef96a3bf8b8add",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    },
+    "s_64461f8e546f15": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a65bc059fe996999c",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
