@@ -34,6 +34,12 @@ const RATE_LIMIT_SUGGESTIONS: Suggestion[] = [
   { message: "Wait and retry (the CLI does this automatically)" },
 ];
 
+/** After a 402: both commands call served routes (GET /v1/billing, GET /v1/billing/usage). */
+export const PAYMENT_SUGGESTIONS: Suggestion[] = [
+  { message: "Check your plan", command: "wave billing status" },
+  { message: "Check what this period has used", command: "wave billing usage" },
+];
+
 export function formatSuggestion(suggestion: Suggestion): string {
   const parts = [`  ${chalk.dim(">")} ${suggestion.message}`];
   if (suggestion.command) {

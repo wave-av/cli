@@ -30,10 +30,44 @@ export class KeychainTimeoutError extends Error {
   }
 }
 import {
+  PAYMENT_SUGGESTIONS,
+  formatSuggestion,
   getAuthSuggestions,
   getRateLimitSuggestions,
   toStructuredError,
 } from "./suggestions.js";
+
+/**
+ * What a 402 means when the response body did not say. The gateway's spend-cap refusal is a flat
+ * `{error:"spend_cap_exceeded", code, message, dimension}`, and @wave-av/sdk 2.1.3 reads only the
+ * nested `{error:{code,message}}` shape, so every SDK-backed command (`clip list`, `voice
+ * list-voices`, ...) received a bare `HTTP_402 Payment Required`. Raw routes (lib/gateway.ts) keep
+ * the gateway's own code and message; this text stands in only for the generic one.
+ */
+export const PAYMENT_REQUIRED_MESSAGE =
+  "Payment required (HTTP 402): this request needs a payment method or goes beyond your plan's " +
+  "included allotment. The API refused it, so nothing was performed or charged.";
+
+/** A 402: the gateway's own code/message when it sent one, else PAYMENT_REQUIRED and the text above. */
+function formatPaymentRequired(error: WaveError, preferJson: boolean): { message: string; exitCode: number } {
+  const exitCode = EXIT_CODES.GENERAL_ERROR;
+  const generic = error.code === "HTTP_402";
+  const code = generic ? "PAYMENT_REQUIRED" : error.code;
+  const message = generic ? PAYMENT_REQUIRED_MESSAGE : error.message;
+  const dimension = typeof error.details?.["dimension"] === "string" ? (error.details["dimension"] as string) : undefined;
+  if (preferJson) {
+    const structured = toStructuredError(code, message, exitCode, PAYMENT_SUGGESTIONS, error.requestId);
+    if (dimension) Object.assign(structured.error, { dimension });
+    return { message: JSON.stringify(structured, null, 2), exitCode };
+  }
+  const lines = [
+    chalk.red(sanitizeForTerminal(message)),
+    chalk.dim(`  Code: ${sanitizeForTerminal(code)} | Status: 402`),
+    dimension ? chalk.dim(`  Dimension: ${sanitizeForTerminal(dimension)}`) : "",
+    error.requestId ? chalk.dim(`  Request ID: ${sanitizeForTerminal(error.requestId)}`) : "",
+  ].filter(Boolean);
+  return { message: `${lines.join("\n")}\n\n${PAYMENT_SUGGESTIONS.map(formatSuggestion).join("\n\n")}`, exitCode };
+}
 
 /**
  * A command whose SDK call is real and correctly typed, but whose gateway route has no live backend
@@ -162,6 +196,10 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       message: getRateLimitSuggestions(),
       exitCode: EXIT_CODES.RATE_LIMITED,
     };
+  }
+
+  if (error instanceof WaveError && error.statusCode === 402) {
+    return formatPaymentRequired(error, env.preferJson);
   }
 
   if (error instanceof WaveError) {

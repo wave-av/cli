@@ -82,6 +82,13 @@ All notable changes to this project are documented here. The format is based on
   subscriptions, billing, analytics) now honor `-o json` and keep the gateway's code and
   message when the body is flat (`{"error":"...","code":"...","message":"..."}`) instead of
   reporting a bare `HTTP_4xx`. SDK-backed commands need the matching `@wave-av/sdk` parser fix.
+- A 402 now says what it means. SDK-backed commands (`clip list`, `voice list-voices`, ...)
+  printed `HTTP_402 Payment Required` with no next step, because `@wave-av/sdk` 2.1.3 drops the
+  gateway's flat spend-cap body. They now report `PAYMENT_REQUIRED`: the request needs a payment
+  method or goes beyond the plan's included allotment, and nothing was performed or charged.
+  They point at `wave billing status` and `wave billing usage`. Raw-route 402s keep the
+  gateway's own code and message (for example `SPEND_CAP_TIER_BLOCKED`), plus the metered
+  `dimension` and the same two suggestions. The exit code is still 1.
 - `wave link` no longer depends on `GET /v1/organizations` and `/v1/projects` (neither is
   served). It records the organization the key acts for (asked without the previously saved
   org header, so a project relinks cleanly after a key change), and exits non-zero when
