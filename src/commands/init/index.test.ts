@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEMPLATES, WITHHELD_TEMPLATES, findTemplatesDir, resolveTemplate } from "./index.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -83,6 +83,13 @@ describe("wave init: templates", () => {
 describe("wave init: scaffolding (command level)", () => {
   let work: string;
   let out: string[];
+  let createProgram: typeof import("../../cli.js").createProgram;
+
+  // Load the whole command tree (SDK included) once, outside any one test's 5s budget: on a busy
+  // machine the cold import alone took longer than that and failed whichever test ran first.
+  beforeAll(async () => {
+    ({ createProgram } = await import("../../cli.js"));
+  }, 60_000);
 
   beforeEach(() => {
     work = mkdtempSync(join(tmpdir(), "wave-cli-init-run-"));
@@ -101,7 +108,6 @@ describe("wave init: scaffolding (command level)", () => {
   });
 
   async function wave(...args: string[]): Promise<void> {
-    const { createProgram } = await import("../../cli.js");
     const program = createProgram();
     program.exitOverride();
     await program.parseAsync(["node", "wave", ...args]);
