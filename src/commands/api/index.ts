@@ -35,23 +35,30 @@ const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 /**
  * Parse one `-H "Name: value"`, splitting on the first colon like curl. A malformed header is an
  * error, not a silent drop (1.0.10 ignored `-H X-Organization-Id` and sent the request without it).
- * A value with CR, LF or NUL is refused here with a message that names the header but never echoes
- * the value: Node's fetch would refuse it too, but its error prints the raw value to the terminal.
+ * A value with CR, LF or NUL anywhere, ends included, is refused here with a message that names the
+ * header but never echoes the value: Node's fetch would refuse an inner one too, but its error prints
+ * the raw value to the terminal. Only spaces and tabs (HTTP optional whitespace) are trimmed, because
+ * `String.prototype.trim()` would also strip a CR or LF at either end before it could be checked.
  */
 export function parseHeader(raw: string): [string, string] {
   const colon = raw.indexOf(":");
   if (colon === -1) {
     throw new Error('-H expected "Name: value" (for example -H "Idempotency-Key: abc123").');
   }
-  const name = raw.slice(0, colon).trim();
+  const name = trimOws(raw.slice(0, colon));
   if (!HEADER_NAME.test(name)) {
     throw new Error('-H: the text before the first ":" is not a valid header name.');
   }
-  const value = raw.slice(colon + 1).trim();
+  const value = trimOws(raw.slice(colon + 1));
   if (/[\r\n\0]/.test(value)) {
     throw new Error(`-H ${name}: a header value cannot contain a line break or NUL.`);
   }
   return [name, value];
+}
+
+/** Trim HTTP optional whitespace (spaces and tabs) only. */
+function trimOws(s: string): string {
+  return s.replace(/^[ \t]+|[ \t]+$/g, "");
 }
 
 export function registerApiCommands(program: Command): void {

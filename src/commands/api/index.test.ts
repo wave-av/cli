@@ -59,4 +59,18 @@ describe("wave api: parseHeader (-H)", () => {
       expect(message).not.toMatch(/Set-Cookie|\r|\n|\u0000/);
     }
   });
+
+  it("refuses a line break at either end of the value or the name, not only inside it", () => {
+    // String.prototype.trim() strips CR and LF, so trimming before the check would let these through.
+    expect(() => parseHeader("X-Test: value\r")).toThrow(/line break or NUL/);
+    expect(() => parseHeader("X-Test: \nvalue")).toThrow(/line break or NUL/);
+    expect(() => parseHeader("X-Test: value\r\n")).toThrow(/line break or NUL/);
+    expect(() => parseHeader("\nX-Test: value")).toThrow(/not a valid header name/);
+    expect(() => parseHeader("X-Test\r: value")).toThrow(/not a valid header name/);
+  });
+
+  it("trims only spaces and tabs around the value (HTTP optional whitespace)", () => {
+    expect(parseHeader("X-Test:\t value \t")).toEqual(["X-Test", "value"]);
+    expect(parseHeader("  X-Test  : v")).toEqual(["X-Test", "v"]);
+  });
 });
