@@ -110,6 +110,8 @@ All notable changes to this project are documented here. The format is based on
   against the live API (GET only, a throwaway HOME, the file credential store) and checks a body
   marker for every path above, after first confirming two known-served control routes.
   `--device` also runs `wave auth login --no-browser` against the live device-flow routes.
+  It never starts a shell: an npm `wave.cmd` shim (Windows) is resolved to the JavaScript entry
+  it wraps and run under node.
 
 - `pr-agent` lane: fork-triggered `/` commands are now refused, and the AI
   call's budget fits inside its step. Three defects, one of them only visible

@@ -56,17 +56,36 @@ function record(name, ok, detail) {
 }
 
 /**
- * Start the CLI binary synchronously. A .js entry runs under this node. On Windows an npm-installed
- * `wave` is a `wave.cmd` shim, which Node refuses to spawn without a shell (CVE-2024-27980), so
- * shims go through cmd.exe with the path quoted; every argument this script passes is a fixed
- * literal with no spaces or shell metacharacters. Elsewhere the binary is executed directly.
+ * The JavaScript entry behind an npm `.cmd`/`.bat` shim (Windows global installs create `wave.cmd`).
+ * Node refuses to spawn a batch file without a shell (CVE-2024-27980), and a shell is exactly what
+ * this script must not use, so read the shim instead: npm's cmd-shim runs
+ * `"%_prog%" "%dp0%\node_modules\@wave-av\cli\dist\index.js" %*`, and that quoted, `%dp0%`-relative
+ * script is the entry this node then runs directly, the same way a `.js` --bin is run.
+ */
+function shimEntry(shimPath) {
+  const shim = readFileSync(shimPath, "utf-8");
+  const target = shim.match(/"%~?dp0%?\\([^"%]+\.(?:c?js|mjs))"/i)?.[1];
+  if (!target) {
+    console.error(`${shimPath} is not an npm cmd-shim for a JavaScript entry. Pass --bin <path to dist/index.js>.`);
+    process.exit(2);
+  }
+  return join(dirname(shimPath), ...target.split("\\"));
+}
+
+// Resolved once: what argv[0] runs, and the arguments that select the CLI ahead of its own.
+const ENTRY = /\.(c?js|mjs)$/i.test(BIN)
+  ? { file: process.execPath, prefix: [BIN] }
+  : /\.(cmd|bat)$/i.test(BIN)
+    ? { file: process.execPath, prefix: [shimEntry(BIN)] }
+    : { file: BIN, prefix: [] };
+
+/**
+ * Start the CLI binary synchronously, never through a shell: a .js entry (or the entry behind a
+ * Windows .cmd shim) runs under this node, and any other binary (a POSIX `wave` symlink with its
+ * shebang) is executed directly.
  */
 function launch(cliArgs, options) {
-  if (/\.(c?js|mjs)$/i.test(BIN)) return spawnSync(process.execPath, [BIN, ...cliArgs], options);
-  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(BIN)) {
-    return spawnSync(`"${BIN}"`, cliArgs, { ...options, shell: true });
-  }
-  return spawnSync(BIN, cliArgs, options);
+  return spawnSync(ENTRY.file, [...ENTRY.prefix, ...cliArgs], { ...options, shell: false });
 }
 
 /**
