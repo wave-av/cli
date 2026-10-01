@@ -17,14 +17,41 @@ export function buildApiUrl(baseUrl: string, path: string): URL {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     const target = new URL(path);
     if (target.origin !== base.origin) {
+      // file:, gopher: and similar schemes have the opaque origin "null"; name the scheme instead.
+      const where = target.origin === "null" ? `a ${target.protocol} URL` : target.origin;
       throw new Error(
-        `Refusing to send your WAVE credential to ${target.origin}. \`wave api\` only calls the ` +
+        `Refusing to send your WAVE credential to ${where}. \`wave api\` only calls the ` +
           `configured API host (${base.origin}); set WAVE_BASE_URL to target another WAVE environment.`,
       );
     }
     return target;
   }
   return new URL(`${baseUrl.replace(/\/+$/, "")}${path.startsWith("/") ? path : `/${path}`}`);
+}
+
+/** An RFC 9110 field name (a "token"). */
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/**
+ * Parse one `-H "Name: value"`, splitting on the first colon like curl. A malformed header is an
+ * error, not a silent drop (1.0.10 ignored `-H X-Organization-Id` and sent the request without it).
+ * A value with CR, LF or NUL is refused here with a message that names the header but never echoes
+ * the value: Node's fetch would refuse it too, but its error prints the raw value to the terminal.
+ */
+export function parseHeader(raw: string): [string, string] {
+  const colon = raw.indexOf(":");
+  if (colon === -1) {
+    throw new Error('-H expected "Name: value" (for example -H "Idempotency-Key: abc123").');
+  }
+  const name = raw.slice(0, colon).trim();
+  if (!HEADER_NAME.test(name)) {
+    throw new Error('-H: the text before the first ":" is not a valid header name.');
+  }
+  const value = raw.slice(colon + 1).trim();
+  if (/[\r\n\0]/.test(value)) {
+    throw new Error(`-H ${name}: a header value cannot contain a line break or NUL.`);
+  }
+  return [name, value];
 }
 
 export function registerApiCommands(program: Command): void {
@@ -55,12 +82,9 @@ export function registerApiCommands(program: Command): void {
         // --org / WAVE_ORG_ID / the saved org, as for every other command (-H can still override).
         if (creds.organizationId) headers["X-Organization-Id"] = creds.organizationId;
 
-        // Add custom headers
         for (const h of opts.header as string[]) {
-          const [key, ...valueParts] = h.split(":");
-          if (key && valueParts.length > 0) {
-            headers[key.trim()] = valueParts.join(":").trim();
-          }
+          const [name, value] = parseHeader(h);
+          headers[name] = value;
         }
 
         const fetchOpts: RequestInit = {

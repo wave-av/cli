@@ -78,7 +78,9 @@ All notable changes to this project are documented here. The format is based on
 - `wave api` defaulted to `https://wave.online` and ignored `WAVE_API_KEY`. It now targets the
   API host, and refuses to send your credential to an absolute URL on a different origin. On
   failure it still prints the response, and exits with the shared codes (2, 7, 11 for an
-  unserved route) instead of a blanket 1.
+  unserved route) instead of a blanket 1. A malformed `-H` (no colon, an invalid header name, or
+  a line break or NUL in the value) is now an error that names the header without echoing the
+  value; 1.0.10 dropped a header with no colon silently and sent the request without it.
 - `wave identity resolve` sent `POST` with a body; the served route is
   `GET /v1/identity/resolve?agent=<id>`. Errors from raw API calls (identity, webhook
   subscriptions, billing, analytics) now honor `-o json` and keep the gateway's code and
