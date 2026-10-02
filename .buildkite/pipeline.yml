@@ -1,0 +1,75 @@
+# @wave-av/cli CI on Buildkite. See .buildkite/README.md.
+#
+# Uploaded by the pipeline's one settings step, which runs .buildkite/scripts/upload.sh
+# (buildkite-agent pipeline upload --no-interpolation --reject-parse-warnings).
+# The GitHub Actions workflows are unchanged.
+#
+# Every step: one checked-in script as its command (agents run with no-command-eval), an explicit
+# timeout, automatic retry only when the agent or guest is lost (-1, 255; limit 1 each), no plugins,
+# and no secret values in env. Steps run in parallel, each in its own fresh guest.
+
+agents:
+  queue: fpc-isolated
+
+env:
+  CI: "true"
+  NPM_CONFIG_AUDIT: "false"
+  NPM_CONFIG_FUND: "false"
+  NPM_CONFIG_UPDATE_NOTIFIER: "false"
+
+steps:
+  - label: ":scales: governance enforce (diff)"
+    key: governance-enforce
+    command: .buildkite/scripts/governance-enforce.sh
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - exit_status: 255
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":typescript: type-check + build + unit tests"
+    key: unit
+    command: .buildkite/scripts/unit.sh
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - exit_status: 255
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":package: pack + fresh install smoke (version truth)"
+    key: smoke
+    command: .buildkite/scripts/smoke.sh
+    timeout_in_minutes: 15
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - exit_status: 255
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
+
+  - label: ":page_facing_up: license truth (offline)"
+    key: license-truth
+    command: .buildkite/scripts/license-truth.sh
+    timeout_in_minutes: 10
+    retry:
+      automatic:
+        - exit_status: -1
+          limit: 1
+        - exit_status: 255
+          limit: 1
+      manual:
+        allowed: true
+        permit_on_passed: false
