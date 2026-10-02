@@ -18,9 +18,12 @@ const AUTH_SUGGESTIONS: Suggestion[] = [
 ];
 
 const NOT_FOUND_SUGGESTIONS: Record<string, Suggestion[]> = {
+  // `wave stream *` is a preview stub (see src/commands/stream/index.ts) — its own routes never
+  // reach the network, so this entry no longer points at `stream list`/`stream create`. It points
+  // at the two GA transport routes that actually serve traffic today.
   stream: [
-    { message: "List available streams", command: "wave stream list" },
-    { message: "Create a new stream", command: "wave stream create --title 'My Stream'" },
+    { message: "Create an SRT input", command: "wave srt inputs create --title 'My Input'" },
+    { message: "Mint a WHIP publish session", command: "wave whip publish --url <source-url>" },
   ],
   studio: [
     { message: "List productions", command: "wave studio list" },
