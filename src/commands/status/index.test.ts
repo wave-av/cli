@@ -14,11 +14,24 @@ vi.mock("../../lib/config/manager.js", () => ({
 }));
 vi.mock("../../lib/auth/keychain.js", () => ({
   getApiKey: vi.fn(),
+  getRefreshToken: vi.fn(),
+  storeApiKey: vi.fn(),
+  storeRefreshToken: vi.fn(),
 }));
 
 import { loadConfig } from "../../lib/config/manager.js";
 import { getApiKey } from "../../lib/auth/keychain.js";
 import { registerStatusCommands } from "./index.js";
+
+// Stored-key path only: a WAVE_API_KEY in the developer's shell must not leak into these cases.
+beforeEach(() => {
+  vi.stubEnv("WAVE_API_KEY", "");
+  vi.stubEnv("WAVE_BASE_URL", "");
+  vi.stubEnv("WAVE_PROJECT", "");
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function buildProgram(): Command {
   const program = new Command();
@@ -71,6 +84,25 @@ describe("wave status", () => {
     await program.parseAsync(["node", "wave", "status"]);
 
     expect(process.exitCode).toBe(1);
+  });
+
+  it("counts WAVE_API_KEY as authenticated (1.0.10 read only the keychain)", async () => {
+    vi.mocked(getApiKey).mockResolvedValue(null);
+    vi.stubEnv("WAVE_API_KEY", "wave_test_env_key");
+    const program = buildProgram();
+    await program.parseAsync(["node", "wave", "status"]);
+
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("prints exactly one JSON document with -o json", async () => {
+    vi.mocked(getApiKey).mockResolvedValue("wv_test_key");
+    const lines: string[] = [];
+    vi.mocked(console.log).mockImplementation((...a: unknown[]) => void lines.push(a.join(" ")));
+    const program = buildProgram();
+    await program.parseAsync(["node", "wave", "status"]);
+
+    expect(JSON.parse(lines.join("\n"))).toMatchObject({ authenticated: true, apiHealthy: true });
   });
 
   it("does not set a failing exit code when authenticated and the API is healthy", async () => {

@@ -12,60 +12,80 @@ npm install -g @wave-av/cli
 pnpm add -g @wave-av/cli
 
 # npx (one-off usage)
-npx @wave-av/cli stream list
+npx @wave-av/cli status
 ```
 
 ## Quick start
 
 ```bash
-# Authenticate
-wave login
+# Authenticate (`wave login` is an alias)
+wave auth login
 
-# Create a stream
-wave stream create --title "My Stream" --protocol webrtc
+# Who am I, and which organization does this key act for?
+wave whoami
 
-# List your streams
-wave stream list
+# Plan and billed usage
+wave billing status
+wave billing usage
 
-# Start streaming
-wave stream start <stream-id>
+# Account analytics
+wave analytics overview
 ```
 
 ## Authentication
 
-### OAuth device flow (recommended)
+Every command resolves credentials the same way: `WAVE_API_KEY` first, then the key
+`wave auth login` stored for the current project. Requests go to `https://api.wave.online`
+unless `WAVE_BASE_URL` (or the project's saved `baseUrl`) says otherwise. That URL must be
+`https://`; plain `http://` is accepted only for `localhost`, and anything else is refused
+(exit 9) before a credential is sent.
+
+The organization header comes from `--org`, then `WAVE_ORG_ID`, then the organization
+`wave link` saved for the project. Without any of them the API uses the key's own organization.
+
+### Device flow (recommended)
 
 ```bash
-wave login
-# Opens browser for authentication
+wave auth login
+# Prints a code and opens your browser to approve it (--no-browser to only print the URL)
 ```
 
 ### Direct API key
 
 ```bash
-wave login --api-key wave_live_your_key_here
+# From a secret manager or a file: the key never appears in argv or shell history
+printf '%s' "$WAVE_KEY" | wave auth login --api-key-stdin
+
+# Or inline (visible in the process list and your shell history while it runs)
+wave auth login --api-key wave_live_your_key_here
 ```
+
+Keys are stored in the OS keychain. Where no keychain can load (headless Linux without
+libsecret, containers) they go to `~/.wave/credentials.json` with mode `0600`, and the CLI
+says so once on stderr; `WAVE_CREDENTIAL_STORE=file` chooses that file explicitly. Logging in
+again replaces the key and clears the organization cached for the project.
+
+`wave auth status` exits 0 when a credential is found and 2 (`AUTH_REQUIRED`) when none is.
 
 ### Multi-project context
 
 ```bash
 # Separate environments
-wave login --project-name production
-wave login --project-name staging
+wave auth login --project production --api-key wave_live_...
+wave auth login --project staging --api-key wave_live_...
 
 # Switch context
 wave config set currentProject staging
 
 # Override per-command
-wave stream list --project production
+wave billing status --project production
 ```
 
 ### CI/CD environment variables
 
 ```bash
 export WAVE_API_KEY=wave_live_your_key_here
-export WAVE_ORG_ID=org_123
-wave stream list  # Uses env vars automatically
+wave whoami  # Uses env vars automatically; no login or saved project needed
 ```
 
 ## Command groups
@@ -91,7 +111,7 @@ wave stream list  # Uses env vars automatically
 | `ghost`        | AI director             | `wave ghost suggestions`                   |
 | `mesh`         | Multi-region            | `wave mesh status`                         |
 | `edge`         | Edge processing         | `wave edge cache status`                   |
-| `analytics`    | Streaming analytics     | `wave analytics viewers`                   |
+| `analytics`    | Streaming analytics     | `wave analytics overview`                  |
 | `prism`        | Camera discovery        | `wave prism discover`                      |
 | `zoom`         | Zoom integration        | `wave zoom meeting create`                 |
 | `vault`        | Recording archive       | `wave vault recordings list`               |
@@ -114,12 +134,18 @@ wave stream list  # Uses env vars automatically
 
 | Command                | Description                            |
 | ---------------------- | -------------------------------------- |
-| `wave listen`          | Forward webhook events to localhost    |
-| `wave logs tail`       | Real-time API log streaming            |
-| `wave trigger <event>` | Fire test webhook events               |
-| `wave dev`             | Combined listen + logs for development |
+| `wave doctor`          | Diagnose install, auth, and API reach  |
+| `wave api <m> <path>`  | Call any API route with your key       |
+| `wave webhook-subscriptions list` | Your org's platform event subscriptions |
 | `wave open [page]`     | Open WAVE dashboard in browser         |
 | `wave init [name]`     | Scaffold a new project from templates  |
+
+`wave listen`, `wave logs tail`, `wave trigger` and `wave dev` are registered but not yet
+served by the WAVE API: they exit with code 11 (not implemented) and a notice, without
+sending anything. Any command whose route the API does not serve yet (`ROUTE_NOT_FOUND` /
+`ROUTE_NOT_MAPPED`) exits the same way instead of reporting a plain 404. `wave api` prints
+the response body on failure and uses the same exit codes (2 for 401, 7 for 403, 11 for an
+unserved route).
 
 ## Global flags
 
@@ -127,7 +153,7 @@ wave stream list  # Uses env vars automatically
 | ----------------------- | ------------------------------------------------ |
 | `-o, --output <format>` | Output format: `table` (default), `json`, `yaml` |
 | `--project <name>`      | Override project context                         |
-| `--org <id>`            | Override organization                            |
+| `--org <id>`            | Override organization (wins over `WAVE_ORG_ID`)  |
 | `-c, --confirm`         | Skip confirmation prompts (for scripting)        |
 | `--no-color`            | Disable colored output                           |
 | `--debug`               | Verbose debug logging                            |
@@ -140,7 +166,9 @@ wave stream list  # Uses env vars automatically
 | `WAVE_ORG_ID`         | Override organization ID          |
 | `WAVE_PROJECT`        | Override project name             |
 | `WAVE_OUTPUT_FORMAT`  | Override output format            |
-| `WAVE_BASE_URL`       | Override API base URL             |
+| `WAVE_BASE_URL`       | Override API base URL (default `https://api.wave.online`; `https://` only, `http://` for localhost) |
+| `WAVE_CREDENTIAL_STORE=file` | Store credentials in `~/.wave/credentials.json` instead of the OS keychain |
+| `WAVE_KEYCHAIN_TIMEOUT_MS` | How long to wait on a locked OS keychain before failing (default 60000, max 2147483647) |
 | `WAVE_NO_COLOR=1`     | Disable colors                    |
 | `WAVE_NO_TELEMETRY=1` | Disable telemetry                 |
 

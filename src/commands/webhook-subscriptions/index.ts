@@ -1,49 +1,19 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getApiKey } from "../../lib/auth/keychain.js";
-import { loadConfig } from "../../lib/config/manager.js";
 import { formatOutput } from "../../lib/output/index.js";
 import { wrapCommand } from "../../lib/errors.js";
+import { gatewayFetch } from "../../lib/gateway.js";
 
 /**
  * Gateway-native webhook-subscription management (GET/POST /v1/webhook-subscriptions, scope
- * webhooks:read/webhooks:write — both customer-grantable). NOTE: these are WAVE platform
+ * webhooks:read/webhooks:write, both customer-grantable). NOTE: these are WAVE platform
  * webhooks (your org's event subscriptions), distinct from `wave connect` (third-party
  * connector webhooks).
  *
- * Auth mirrors lib/api-client.ts: env WAVE_API_KEY override, else the project keychain key.
- * Base URL: env WAVE_BASE_URL override, else the project's baseUrl, else the gateway default.
+ * Requests go through lib/gateway.ts: the same key/host resolution as getClient(), and failures
+ * are thrown as WaveErrors so `-o json` gets the structured error envelope (1.0.10 printed a human
+ * "✗ 404 ..." line even in JSON mode).
  */
-async function gatewayRequest(
-  program: Command,
-  path: string,
-  init?: { method?: string; body?: unknown },
-): Promise<unknown> {
-  const apiKey = process.env["WAVE_API_KEY"] ?? (await getApiKey(program.opts().project ?? process.env["WAVE_PROJECT"] ?? (await loadConfig()).currentProject));
-  if (!apiKey) {
-    console.error(chalk.red("No API key. Run wave login first (or set WAVE_API_KEY)."));
-    process.exit(1);
-  }
-  const envBaseUrl = process.env["WAVE_BASE_URL"];
-  const config = await loadConfig();
-  const project = config.projects[program.opts().project ?? process.env["WAVE_PROJECT"] ?? config.currentProject];
-  const base = envBaseUrl ?? project?.baseUrl ?? "https://api.wave.online";
-  const res = await fetch(`${base}${path}`, {
-    method: init?.method ?? "GET",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      ...(init?.body ? { "content-type": "application/json" } : {}),
-    },
-    body: init?.body ? JSON.stringify(init.body) : undefined,
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    console.error(chalk.red(`✗ ${res.status} ${path}`));
-    formatOutput(body, program.opts());
-    process.exit(1);
-  }
-  return body;
-}
 
 export function registerWebhookSubscriptionCommands(program: Command): void {
   const webhooks = program
@@ -55,7 +25,8 @@ export function registerWebhookSubscriptionCommands(program: Command): void {
     .description("List webhook subscriptions")
     .action(
       wrapCommand(async () => {
-        const result = await gatewayRequest(program, "/v1/webhook-subscriptions");
+        const { project, org } = program.opts();
+        const result = await gatewayFetch("/v1/webhook-subscriptions", { project, org });
         formatOutput(result, program.opts());
       }),
     );
@@ -70,7 +41,10 @@ export function registerWebhookSubscriptionCommands(program: Command): void {
         const body: Record<string, unknown> = {};
         if (opts.url) body.url = opts.url;
         if (opts.events) body.events = String(opts.events).split(",").map((s: string) => s.trim()).filter(Boolean);
-        const result = await gatewayRequest(program, "/v1/webhook-subscriptions", {
+        const { project, org } = program.opts();
+        const result = await gatewayFetch("/v1/webhook-subscriptions", {
+          project,
+          org,
           method: "POST",
           body,
         });
@@ -86,13 +60,17 @@ export function registerIdentityCommands(program: Command): void {
     .description("Fleet agent identity directory (gateway identity-resolve)");
 
   identity
-    .command("resolve <identifier>")
-    .description("Resolve an agent identity (directory:read — operator-plane; 403 without it)")
+    .command("resolve <agent>")
+    .description("Resolve a WAVE agent id to its public channel map (GET /v1/identity/resolve?agent=)")
     .action(
-      wrapCommand(async (identifier: string) => {
-        const result = await gatewayRequest(program, "/v1/identity/resolve", {
-          method: "POST",
-          body: { identifier },
+      wrapCommand(async (agent: string) => {
+        // The served contract is GET with ?agent=<id> (1.0.10 sent POST with a JSON body, which
+        // the gateway refuses as ROUTE_NOT_MAPPED).
+        const { project, org } = program.opts();
+        const result = await gatewayFetch("/v1/identity/resolve", {
+          project,
+          org,
+          query: { agent },
         });
         formatOutput(result, program.opts());
       }),

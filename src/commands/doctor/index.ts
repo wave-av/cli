@@ -1,9 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { loadConfig } from "../../lib/config/manager.js";
+import { getConfigPath, loadConfig } from "../../lib/config/manager.js";
+import { getDefaultConfig } from "../../lib/config/schema.js";
 import { getApiKey } from "../../lib/auth/keychain.js";
+import { resolveProjectName } from "../../lib/auth/credentials.js";
+import type { WaveConfig } from "../../types/index.js";
 import { formatOutput } from "../../lib/output/index.js";
-import { wrapCommand } from "../../lib/errors.js";
+import { KeychainTimeoutError, wrapCommand } from "../../lib/errors.js";
 import { detectEnvironment } from "../../lib/environment.js";
 import { maskSecret } from "../../lib/mask.js";
 
@@ -32,28 +35,54 @@ export function registerDoctorCommands(program: Command): void {
           fix: major < 18 ? "Install Node.js 18+: https://nodejs.org" : undefined,
         });
 
-        // 2. Config file
+        // 2. Config file. Loaded once; a file the CLI refuses to use is a failed check, reported
+        // with the reason, and the remaining checks run against defaults.
+        let config: WaveConfig;
         try {
-          const config = await loadConfig();
+          config = await loadConfig();
           checks.push({
             name: "Config",
             status: "pass",
             message: `Loaded (project: ${config.currentProject})`,
           });
-        } catch {
+        } catch (err) {
+          config = getDefaultConfig();
           checks.push({
             name: "Config",
-            status: "warn",
-            message: "Could not load config (using defaults)",
-            fix: "wave config list",
+            status: "fail",
+            message: err instanceof Error ? err.message : String(err),
+            fix: `Fix or move aside ${getConfigPath()}`,
           });
         }
 
-        // 3. Authentication
-        const config = await loadConfig();
-        const apiKey = await getApiKey(config.currentProject);
+        // 3. Authentication, for the project every other command would use (--project,
+        // WAVE_PROJECT, then the current project).
+        const project = resolveProjectName(config, program.opts().project);
         const envKey = process.env["WAVE_API_KEY"];
-        if (envKey) {
+        // WAVE_API_KEY wins (same order as every command), so the keychain is only consulted
+        // without it: a locked keychain must not stall a diagnostic that does not need it.
+        let apiKey: string | null = null;
+        let credentialStoreError: string | null = null;
+        if (!envKey) {
+          try {
+            apiKey = await getApiKey(project);
+          } catch (err) {
+            // A broken credential store (keytar installed without its full API, an unreadable
+            // credentials file) is exactly what doctor exists to diagnose: report it as the Auth
+            // check and run the rest. A keychain timeout is the exception: the native call is
+            // still blocked, so the process cannot exit normally, and wrapCommand has to end it.
+            if (err instanceof KeychainTimeoutError) throw err;
+            credentialStoreError = err instanceof Error ? err.message : String(err);
+          }
+        }
+        if (credentialStoreError) {
+          checks.push({
+            name: "Auth",
+            status: "fail",
+            message: `Credential store unusable: ${credentialStoreError}`,
+            fix: "export WAVE_API_KEY=...  (or WAVE_CREDENTIAL_STORE=file, then wave auth login)",
+          });
+        } else if (envKey) {
           checks.push({
             name: "Auth",
             status: "pass",
@@ -65,27 +94,34 @@ export function registerDoctorCommands(program: Command): void {
           checks.push({
             name: "Auth",
             status: "pass",
-            message: `API key stored for "${config.currentProject}" (${maskSecret(apiKey)})`,
+            message: `API key stored for "${project}" (${maskSecret(apiKey)})`,
           });
         } else {
           checks.push({
             name: "Auth",
             status: "fail",
-            message: "No API key found",
-            fix: "wave login",
+            message: `No API key found for project "${project}"`,
+            fix: "wave auth login  (or export WAVE_API_KEY=...)",
           });
         }
 
-        // 4. Project configuration
+        // 4. Project configuration. `wave auth login` writes the entry; `--project <name>` picks
+        // which one (1.0.10 suggested a `--project-name` flag that never existed). With
+        // WAVE_API_KEY set no saved project is needed at all.
         const projectCount = Object.keys(config.projects).length;
         checks.push({
           name: "Projects",
-          status: projectCount > 0 ? "pass" : "warn",
+          status: projectCount > 0 || envKey ? "pass" : "warn",
           message:
             projectCount > 0
               ? `${projectCount} project(s) configured`
-              : "No projects configured",
-          fix: projectCount === 0 ? "wave login --project-name production" : undefined,
+              : envKey
+                ? "None saved (not needed: WAVE_API_KEY is set)"
+                : "No projects configured",
+          fix:
+            projectCount === 0 && !envKey
+              ? "wave auth login  (or: wave auth login --project production)"
+              : undefined,
         });
 
         // 5. Environment detection

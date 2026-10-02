@@ -8,6 +8,122 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Authentication works end to end again.** In 1.0.10 no customer could store a credential:
+  - `wave auth login --api-key` and `wave auth logout` crashed with `keytar.setPassword is not a
+    function`. keytar is CommonJS; under Node ESM `await import("keytar")` exposes only
+    `getPassword` as a named export and the full API on `.default`. The loader now takes
+    `.default` when it is complete. When keytar cannot load at all it falls back to
+    `~/.wave/credentials.json` (mode 0600) and says so once on stderr; `WAVE_CREDENTIAL_STORE=file`
+    selects the file explicitly. A keytar that loads without its full API is refused with an
+    error instead of silently degrading to the file.
+  - The credentials file and `~/.wave/config.json` are updated under an inter-process lock and
+    written atomically, so two `wave` processes (a token refresh and a login to another project)
+    cannot drop each other's change. A config or credentials file that does not parse is
+    reported (config: exit 9) and left untouched; earlier versions overwrote it with defaults,
+    erasing every saved project. Reading a missing config no longer creates one. A lock left by
+    a process that died is taken over by exactly one waiter, which re-checks that it is still
+    the same lock file before removing it, and a process only ever removes the lock it holds.
+    Releasing a lock goes through the same check, so a holder that stalled cannot delete the
+    lock that replaced its own. A process killed in the middle of removing a stale lock no
+    longer blocks later writers, and a lock that cannot be released is reported on stderr
+    instead of turning a saved credential or config change into a failure.
+  - `wave auth login --api-key-stdin` reads the key from a pipe, keeping it out of the process
+    list and shell history. Logging in again clears the organization cached for the project.
+  - `wave auth login` (device flow) called `/api/oauth/device/authorize|token`, which the API
+    answers 404 `ROUTE_NOT_FOUND`. It now uses the SDK's agent-auth ceremony on
+    `POST /v1/agent/auth/device` and `/v1/agent/auth/token`, stores the refresh token, and
+    refreshes an expired access token before use. A refused refresh sends the old token (the
+    API's 401 then says to log in again); a network failure past expiry, or a refreshed token
+    that cannot be saved, is reported instead of being swallowed. `--no-browser` prints the URL
+    only, and the browser is opened only for a verification page on the API host. A grant
+    without a usable `interval` is polled every 5s (RFC 8628's default), not in a tight loop.
+  - `auth login` now writes the project entry that every API command reads. 1.0.10 stored a key
+    and then refused to use it: `No project "default" configured`.
+  - `wave login` / `wave logout` exist as aliases (README, `wave doctor` and error hints all
+    told users to run `wave login`, which answered `unknown command 'login'`). The
+    `--project-name` flag the README documented never existed; use the global `--project`.
+  - Keychain calls are bounded (60s, `WAVE_KEYCHAIN_TIMEOUT_MS` overrides, capped at Node's timer
+    limit of about 24.8 days: a larger value such as `1e15` used to fail every keychain call after
+    1 ms, because Node runs an oversized timer immediately). A locked macOS login
+    keychain that nobody can unlock (locked screen, headless session) made `auth login --api-key`
+    hang with no output. It now fails with what to do instead (`WAVE_API_KEY`, or
+    `WAVE_CREDENTIAL_STORE=file`) and exits 137: Node cannot exit normally while the native
+    keychain call is still blocked. `wave doctor` no longer reads the keychain when
+    `WAVE_API_KEY` is set, and a credential store it cannot use (an incomplete keytar, a
+    credentials file that does not parse) is reported as a failed Auth check alongside the
+    rest of the report instead of aborting it.
+- **One credential and host resolution for every command** (`WAVE_API_KEY`, then the stored key;
+  `WAVE_BASE_URL`, then the project's `baseUrl`, then `https://api.wave.online`). `whoami`,
+  `auth status`, `status`, `api`, `billing` and `link` read the keychain only, so CI users with
+  `WAVE_API_KEY` were told "Not authenticated".
+- The API host must be `https://` (`http://` only for localhost): a `WAVE_BASE_URL` or saved
+  `baseUrl` that would send the key or a refresh token in cleartext is refused with exit 9.
+- `--org` now reaches every command, including the raw-route ones (billing, analytics,
+  identity, webhook subscriptions, `wave api`). Order: `--org`, then `WAVE_ORG_ID`, then the
+  saved org.
+- `wave whoami` called `/api/v1/me` (404). It now calls `GET /v1/me`; when the key lacks
+  `me:read` it still reports the organization (from `GET /v1/billing`) and says why the profile
+  is missing. When the key cannot read billing either, `organizationUnavailable` says so;
+  any other failure of that fallback (401, 5xx) is an error, not a partial identity. Text
+  from the API, and every error the shared error formatter prints (including ones that quote
+  `WAVE_BASE_URL` or the saved `baseUrl`), is stripped of terminal control sequences first. `whoami -o json` and `status -o json` now print exactly one JSON document (1.0.10
+  printed the human block first, so piping to `jq` failed).
+- A missing credential now exits 2 (`AUTH_REQUIRED`, the documented code) from every command,
+  including `wave auth status`, with the structured error under `-o json`. 1.0.10 exited 1 with
+  `No project "default" configured`.
+- `wave billing status|usage` called `https://wave.online/api/billing/*` (the marketing site,
+  404 on every path). They now call `GET /v1/billing` and `GET /v1/billing/usage` on the API
+  host. `invoices`, `limits`, `portal` and `upgrade` have no API route yet and say so without
+  sending a request.
+- `wave api` defaulted to `https://wave.online` and ignored `WAVE_API_KEY`. It now targets the
+  API host, and refuses to send your credential to an absolute URL on a different origin. On
+  failure it still prints the response, and exits with the shared codes (2, 7, 11 for an
+  unserved route) instead of a blanket 1. A malformed `-H` (no colon, an invalid header name, or
+  a line break or NUL in the value) is now an error that names the header without echoing the
+  value; 1.0.10 dropped a header with no colon silently and sent the request without it.
+- `wave identity resolve` sent `POST` with a body; the served route is
+  `GET /v1/identity/resolve?agent=<id>`. Errors from raw API calls (identity, webhook
+  subscriptions, billing, analytics) now honor `-o json` and keep the gateway's code and
+  message when the body is flat (`{"error":"...","code":"...","message":"..."}`) instead of
+  reporting a bare `HTTP_4xx`. SDK-backed commands need the matching `@wave-av/sdk` parser fix.
+- A 402 now says what it means. SDK-backed commands (`clip list`, `voice list-voices`, ...)
+  printed `HTTP_402 Payment Required` with no next step, because `@wave-av/sdk` 2.1.3 drops the
+  gateway's flat spend-cap body. They now report `PAYMENT_REQUIRED`: the request needs a payment
+  method or goes beyond the plan's included allotment, and nothing was performed or charged.
+  They point at `wave billing status` and `wave billing usage`. Raw-route 402s keep the
+  gateway's own code and message (for example `SPEND_CAP_TIER_BLOCKED`), plus the metered
+  `dimension` and the same two suggestions. The exit code is still 1.
+- `wave link` no longer depends on `GET /v1/organizations` and `/v1/projects` (neither is
+  served). It records the organization the key acts for (asked without the previously saved
+  org header, so a project relinks cleanly after a key change), and exits non-zero when
+  unauthenticated.
+- `wave init` scaffolded an empty project: templates were looked up three directories above the
+  bundled `dist/index.js`, missed, and silently replaced by an empty `src/`. Templates now
+  resolve from the package root (or the command fails loudly), `blank`, `multi-camera` and
+  `podcast` are selectable, and the generated `wave.config.ts` no longer imports a
+  `defineConfig` the SDK does not export. Generated projects get a `tsconfig.json` and
+  `@types/node`, so `npm run build` works (no template shipped a tsconfig).
+- Every template depended on `@wave/sdk`, a package that does not exist on npm, so
+  `npm install` in a generated project failed. They now depend on `@wave-av/sdk`, and the
+  `blank` and `api-integration` templates call served routes. Every offered template now
+  type-checks against `@wave-av/sdk` 2.1.3 (`multi-camera` and `podcast` used field names the SDK
+  does not have); templates whose routes are not confirmed served are labelled preview.
+  `webhook-handler` and `studio-plugin` are removed from the package: they called
+  `wave.webhooks.verify` and `wave.studio.registerPlugin`, which the SDK does not provide, and
+  `--template` says so.
+- Commands whose route the API does not serve (`ROUTE_NOT_FOUND` / `ROUTE_NOT_MAPPED`) now say
+  so and exit 11 instead of printing a plain 404. `wave logs tail`, `listen`, `trigger`, `dev`,
+  `admin jobs`, `mesh status` and `mesh regions` targeted routes that do not exist and now stop
+  before sending anything.
+- `package.json` `homepage` pointed at `https://docs.wave.online/cli` (404); it is now the live
+  CLI reference, `https://docs.wave.online/docs/cli`.
+- `scripts/smoke/live-connectivity.mjs` (`npm run smoke:live`) drives the built or installed CLI
+  against the live API (GET only, a throwaway HOME, the file credential store) and checks a body
+  marker for every path above, after first confirming two known-served control routes.
+  `--device` also runs `wave auth login --no-browser` against the live device-flow routes.
+  It never starts a shell: an npm `wave.cmd` shim (Windows) is resolved to the JavaScript entry
+  it wraps and run under node.
+
 - `pr-agent` lane: fork-triggered `/` commands are now refused, and the AI
   call's budget fits inside its step. Three defects, one of them only visible
   once the first was fixed.
@@ -33,6 +149,8 @@ All notable changes to this project are documented here. The format is based on
   (wave-av/wave-foundation-public#73)
 
 ### Added
+- `wave analytics overview|engagement|top-content` call the served `GET /v1/analytics/*`
+  routes; `wave billing usage` takes `--from/--to`.
 - **`wave compose "<intent>"`** calls `POST /v1/compose` through the existing `getClient()` /
   auth / error plumbing (no new HTTP stack) and prints a markdown rendering of the proposal:
   stages with their `why` lines, scopes with `mintable` flags, price rows (a `usd` amount only
