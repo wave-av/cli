@@ -12,6 +12,15 @@ name: public-repo-guard-body
 # for naming a private repo in wrangler.toml while the very same name, with more
 # operational detail attached, sat unchallenged in its body.
 #
+# THREE SURFACES, ONE RULE TABLE. This job scans the PR TITLE, the PR/issue/comment
+# BODY, and — added here — EVERY COMMIT MESSAGE in the pull request, all through the
+# same body-policy.sh. The commit-message half closes the last text surface a public
+# repo publishes that nothing read: on 2026-09-10 an internal tracking id inside a
+# conventional-commit scope ("fix(<ID>): …") reached a public repo in a PR title AND
+# in the commit messages beneath it, because the only gate in front of it read FILE
+# CONTENT. A title and a commit message are as permanent as a body — `git log` keeps
+# the message even after a body is edited — so they are held to the same table.
+#
 # This job's check-run name ("Body content policy") is NOT a required status
 # context in this repo's ruleset, so it can safely trigger on every comment/review
 # event without any risk of masking or wedging the required tree-scan context —
@@ -42,8 +51,16 @@ on:
 
 # `pull_request`, deliberately NOT `pull_request_target`: a fork PR must never get
 # a write token or repo secrets just because a gate wanted to read its body.
+#
+# `pull-requests: read` is the ONLY addition, and it is read-only: the commit-message
+# step below lists the PR's commits through the REST API rather than deepening the
+# checkout. Reading them from the API keeps this job's `sparse-checkout` of the
+# gate's own scripts intact (no full history, no full tree on every comment) and
+# keeps the token read-only — a gate that needed write scope to read text would be a
+# worse trade than the gap it closes.
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   body-guard:
@@ -116,7 +133,48 @@ jobs:
             "$GITHUB_EVENT_PATH" > "$RUNNER_TEMP/bodyscan/body.txt"
           echo "scanning $(wc -l < "$RUNNER_TEMP/bodyscan/body.txt") line(s) of body text"
 
-      - name: body policy (PR / issue / comment text)
+      - name: body policy (PR title / issue / comment text)
         env:
           GUARD_PRIVATE_REPOS: ${{ vars.GUARD_PRIVATE_REPOS }}
         run: bash scripts/public-repo-guard/body-policy.sh "$RUNNER_TEMP/bodyscan/body.txt"
+
+      # COMMIT MESSAGES — the surface nothing read until now. Same discipline as the
+      # title/body step above: the untrusted text goes API -> FILE -> script path, and
+      # is never interpolated into a run: block, never placed in an environment
+      # variable. The two values that ARE interpolated are the repository slug and the
+      # PR number, both produced by GitHub and neither author-controlled.
+      #
+      # Read from the API, not from `git log`: this job checks out only
+      # scripts/public-repo-guard at depth 1, so there is no base..head range on disk,
+      # and a fetch-depth-0 checkout on every comment event would be a much larger bill
+      # than one paginated read.
+      #
+      # --paginate because a PR is not always small; the endpoint caps at 250 commits,
+      # and past that a PR is being asked to do a branch's job — the guard still reads
+      # the first 250 and the tree scan is unaffected.
+      - name: Materialize the PR commit messages to a file
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bodyscan"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/commits" \
+            --jq '.[].commit.message' > "$RUNNER_TEMP/bodyscan/commits.txt"
+          # EMPTY IS A FAILURE, never a pass. Every pull request has at least one
+          # commit, so an empty file means the API shape moved, the token lost read
+          # access, or pagination returned nothing — and a gate that reports success
+          # over text it never read is worse than no gate (the same argument the
+          # title/body step makes about an unrecognized event payload).
+          if [ ! -s "$RUNNER_TEMP/bodyscan/commits.txt" ]; then
+            echo "::error title=public-repo-guard-body::Listed 0 commit messages for PR #${PR_NUMBER} — a pull request always has at least one. Refusing to report a pass on unscanned commit messages."
+            exit 1
+          fi
+          echo "scanning $(wc -l < "$RUNNER_TEMP/bodyscan/commits.txt") line(s) of commit-message text"
+
+      - name: body policy (PR commit messages)
+        if: github.event_name == 'pull_request'
+        env:
+          GUARD_PRIVATE_REPOS: ${{ vars.GUARD_PRIVATE_REPOS }}
+        run: bash scripts/public-repo-guard/body-policy.sh "$RUNNER_TEMP/bodyscan/commits.txt"
