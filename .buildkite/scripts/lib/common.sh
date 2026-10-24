@@ -25,6 +25,13 @@ export NPM_CONFIG_FUND
 NPM_CONFIG_UPDATE_NOTIFIER=false
 export NPM_CONFIG_UPDATE_NOTIFIER
 
+# FPC guests default to node 24 (mise shims first on job PATH); the mirrored GH jobs pin node 22
+# and bk_assert_node_major below fails closed on any other major (build 1 died here in ~2s on all
+# four steps). Select the newest installed 22.x via env, which keeps the pin BK-scoped (no root
+# .tool-versions side effects on dev/GHA) and floats across toolchain bumps (exact pins rot).
+MISE_NODE_VERSION=22
+export MISE_NODE_VERSION
+
 BK_SAME_REPO_RE='^(https://|git://|ssh://git@|git@)github\.com[:/]wave-av/cli(\.git)?$'
 
 _bk_cleanup_paths=()
