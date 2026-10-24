@@ -1,0 +1,46 @@
+src/commands/logs/index.ts
+  s_13ccc7d9001218::t_6ea19a011efb99 2,4-10,13,17,22-23
+src/commands/link/index.ts
+  s_13ccc7d9001218::t_0146d92d0ff9d1 5-10,15,18-45,50-52,54-59,62-67,73,75,79,89-91,94,96-97,99,104-106,112,119
+  s_13ccc7d9001218::t_251b390caebe38 70-72,74
+src/commands/trigger/index.ts
+  s_13ccc7d9001218::t_c5ddff3060b3e5 2-10,15,19-20
+src/commands/webhook-subscriptions/index.ts
+  s_13ccc7d9001218::t_81439048c20780 5,9,13-15,28,43-44,60-61,63-68
+src/commands/billing/index.ts
+  s_13ccc7d9001218::t_f1822ce0114404 3-4,6-14,16-18,20-22,24-26,28-36,46,49,56,58-59,61-66,73,75,79-80,84-85,89-90
+src/commands/analytics/index.ts
+  s_13ccc7d9001218::t_03b431c2d27ef2 8
+  s_13ccc7d9001218::t_eaa4587fd3b7a1 33-42,46-64
+  s_13ccc7d9001218::t_4b1bacd3eb4c4b 65
+src/commands/dev/index.ts
+  s_13ccc7d9001218::t_e0f8d96552df9c 2,5-8,10-12,18,32-33
+src/commands/api/index.ts
+  s_13ccc7d9001218::t_372743170b347e 3,5,8-27,37-42,45,48,51
+src/commands/listen/index.ts
+  s_13ccc7d9001218::t_1a98e0abcae4d8 2-12,17,21-22
+src/commands/admin/index.ts
+  s_13ccc7d9001218::t_9576f6deee9d3f 2-13,21,25,27,31,33
+src/commands/mesh/index.ts
+  s_13ccc7d9001218::t_debc1ca8e55246 5,8-16,22,25,31,34
+src/commands/api/index.test.ts
+  s_13ccc7d9001218::t_4b086a95352234 1-23
+src/commands/connectivity.test.ts
+  s_13ccc7d9001218::t_2fd7c260e748cd 1-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "78a62ecf3f06248f795148ee8fbb26644a03731a",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+src/commands/api/index.test.ts
+  s_0cbf2830df5352::t_9fee6d4be4e02d 62-75
+src/commands/api/index.ts
+  s_0cbf2830df5352::t_05b803a0b86967 38-41,48,52,59-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "f06d62f8cedcd76a568e78022baac2e134a1efe0",
+  "prompts": {},
+  "sessions": {
+    "s_0cbf2830df5352": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa1756089e400ec07",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

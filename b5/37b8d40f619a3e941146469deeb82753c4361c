@@ -1,0 +1,26 @@
+src/commands/doctor/index.test.ts
+  s_13ccc7d9001218::t_c9d4b5c225aa34 80-113
+  s_13ccc7d9001218::t_0b7027647e402d 21
+  s_13ccc7d9001218::t_ccd91d48e3d3b2 114
+src/commands/doctor/index.ts
+  s_13ccc7d9001218::t_7edd4fa90cf808 64-85
+  s_13ccc7d9001218::t_6f72a1083b89ee 9
+CHANGELOG.md
+  s_13ccc7d9001218::t_dd47a437677f40 45-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "b537b8d40f619a3e941146469deeb82753c4361c",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

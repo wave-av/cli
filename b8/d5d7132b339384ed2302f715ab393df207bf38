@@ -1,0 +1,43 @@
+scripts/smoke/live-connectivity.mjs
+  s_13ccc7d9001218::t_8d3965983129cf 16-17
+  s_13ccc7d9001218::t_d8b900f31f4e8b 184-203
+  s_13ccc7d9001218::t_7723bc88688fe3 13-15
+  s_13ccc7d9001218::t_91004c0bef046c 18-20,181-183
+  s_13ccc7d9001218::t_1524052b989e0b 204-206
+  s_13ccc7d9001218::t_c0324c6c09b8d4 1-12,21-180,207-214
+README.md
+  s_13ccc7d9001218::t_213f1b73d11365 132-134
+  s_13ccc7d9001218::t_346279cb48f089 155-156
+  s_13ccc7d9001218::t_3e0d3288544b8b 157
+  s_13ccc7d9001218::t_64f9e2144c240f 102
+  s_13ccc7d9001218::t_c04c8e0383a804 125-127,131
+  s_13ccc7d9001218::t_63663784cf59c2 15,21-22,24-25,27-29,31-32,37-41,44-45,51,54-57,62-63,69,76
+  s_13ccc7d9001218::t_df410fa7dae381 135
+CHANGELOG.md
+  s_13ccc7d9001218::t_a2f3ea98cfbf90 11-25,32-50,54-60,63-64,70-73,80
+  s_13ccc7d9001218::t_f22b9e10165d97 51-53
+  s_13ccc7d9001218::t_b8e3c7316fe3ff 26-31
+  s_13ccc7d9001218::t_57e189e7d1fcd4 76-79
+  s_13ccc7d9001218::t_b1b466351a4356 106-107
+  s_13ccc7d9001218::t_7496a2cb0c8eed 61-62,65-69
+  s_13ccc7d9001218::t_fd101acb10fa80 74-75
+package.json
+  s_13ccc7d9001218::t_fc45d154c5d59a 50
+  s_13ccc7d9001218::t_e67a8dd1d6df02 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "b8d5d7132b339384ed2302f715ab393df207bf38",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

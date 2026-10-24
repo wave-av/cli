@@ -1,0 +1,24 @@
+src/lib/auth/keychain.ts
+  s_13ccc7d9001218::t_5d55906742e379 156
+  s_13ccc7d9001218::t_4bd3ff7a0983b1 176,178
+  s_13ccc7d9001218::t_ee4e14752b44c2 214-216
+  s_13ccc7d9001218::t_08a787cf08242a 271,275
+src/lib/auth/keychain.test.ts
+  s_13ccc7d9001218::t_7fcd9f4ac2caca 142-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "03e315bfa0a649dca3e3cab5c448f98471eae50b",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

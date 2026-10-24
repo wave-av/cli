@@ -1,0 +1,38 @@
+CHANGELOG.md
+  s_13ccc7d9001218::t_589c9d51b08fcd 76-77
+  s_13ccc7d9001218::t_3a919d640c4e55 90-92
+  s_13ccc7d9001218::t_793112dde2c84d 60-61
+  s_13ccc7d9001218::t_0c1dc2570bbc16 48-52,55-57
+  s_13ccc7d9001218::t_b811a5029c8052 67-69
+  s_13ccc7d9001218::t_07e1b8aab0cee7 15-25
+  s_13ccc7d9001218::t_8b03ba8f8cc979 29-32
+README.md
+  s_13ccc7d9001218::t_f4463c368054e1 156
+  s_13ccc7d9001218::t_e0a1b5d2c82ed6 169
+  s_13ccc7d9001218::t_061ada16ff2682 146-148
+  s_13ccc7d9001218::t_c40050870a7a54 56-59,63-68
+  s_13ccc7d9001218::t_6b55f5573041ec 39-44
+scripts/smoke/live-connectivity.mjs
+  s_13ccc7d9001218::t_803ce0fe8fc2d1 99-103
+  s_13ccc7d9001218::t_aeadffad4d2bba 166-167,170-171,173-183,189-200
+  s_13ccc7d9001218::t_0b0bac562712e6 214-218
+  s_13ccc7d9001218::t_bc77378b2fe793 20-22
+  s_13ccc7d9001218::t_5c99f99b8b1069 56-61,69
+  s_13ccc7d9001218::t_772e26d716ecab 71-74,79-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5fcc88273071b9c45af174bf2d43c4588b9ef820",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

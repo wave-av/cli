@@ -1,0 +1,19 @@
+src/commands/init/index.test.ts
+  s_0903d8eb230d11::t_5207fc5e90d8cd 5,86-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "6b4eb4451b99181702d98addaf347c2e72556503",
+  "prompts": {},
+  "sessions": {
+    "s_0903d8eb230d11": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0fe28f75b928b8cf",
+        "model": "unknown"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+src/lib/fs-lock.test.ts
+  s_13ccc7d9001218::t_24be7b4febe7a9 46-67,69-82
+  s_13ccc7d9001218::t_1cdff24737f678 68
+CHANGELOG.md
+  s_13ccc7d9001218::t_5c84dbf19f4341 23-25
+src/lib/fs-lock.race.test.ts
+  s_13ccc7d9001218::t_a9619b9d1d64d3 1-76
+src/lib/fs-lock.ts
+  s_13ccc7d9001218::t_ae5a372a197f85 80
+  s_13ccc7d9001218::t_aee0b4a1f20807 2-4
+  s_13ccc7d9001218::t_c95f7b75eee451 26-79,81-111,114-115,125-126,131-137,149
+  s_13ccc7d9001218::t_10c4d7a18726b3 139-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "f4f431d6272bcf873dcc7cc646f8b9ead1f41559",
+  "prompts": {},
+  "sessions": {
+    "s_13ccc7d9001218": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11229abc-f617-4541-b5d7-d693c6ae4d9d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
