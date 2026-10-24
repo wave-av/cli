@@ -3,6 +3,10 @@
 This directory runs the CLI's pull-request and push checks on Buildkite. The GitHub Actions workflows
 under `.github/` are unchanged.
 
+The steps below are rendered from `wave-ci.json` by the wave-ci `custom` template (wave-ci#212):
+`pipeline.yml` is the thin uploader, `wave-ci.sh` renders + caps-lints + uploads. To change a step,
+edit `wave-ci.json` (keys, labels, scripts, timeouts), never the rendered output.
+
 ## Steps
 
 | step key | mirrors (GitHub workflow / job) | credential |

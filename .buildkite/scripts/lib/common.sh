@@ -13,6 +13,18 @@ set -euo pipefail
 BK_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 export BK_REPO_ROOT
 
+# Rendered-pipeline parity (wave-ci#212): the template emits no top-level env, so the values the
+# old pipeline.yml set for every step live here instead. Exported (child npm/node processes read
+# them); names only, never values, per the header rules.
+CI=true
+export CI
+NPM_CONFIG_AUDIT=false
+export NPM_CONFIG_AUDIT
+NPM_CONFIG_FUND=false
+export NPM_CONFIG_FUND
+NPM_CONFIG_UPDATE_NOTIFIER=false
+export NPM_CONFIG_UPDATE_NOTIFIER
+
 BK_SAME_REPO_RE='^(https://|git://|ssh://git@|git@)github\.com[:/]wave-av/cli(\.git)?$'
 
 _bk_cleanup_paths=()
