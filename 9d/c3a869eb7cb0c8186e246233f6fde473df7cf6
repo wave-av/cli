@@ -1,0 +1,22 @@
+.buildkite/README.md
+  h_af5ac1a9798224 6-9
+.buildkite/pipeline.yml
+  h_af5ac1a9798224 1-4,6-13,18
+.buildkite/scripts/lib/common.sh
+  h_af5ac1a9798224 16-27
+.buildkite/wave-ci.json
+  h_af5ac1a9798224 1-38
+.buildkite/wave-ci.sh
+  h_af5ac1a9798224 1-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "9dc3a869eb7cb0c8186e246233f6fde473df7cf6",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
