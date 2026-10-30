@@ -2,11 +2,14 @@
 #
 # Uploaded by the pipeline's one settings step, which runs .buildkite/scripts/upload.sh
 # (buildkite-agent pipeline upload --no-interpolation --reject-parse-warnings).
-# The GitHub Actions workflows are unchanged.
+# Replaces the Depot (.depot/workflows) checks for WAVE-30233; those files stay until the Nov 2
+# Depot cleanup.
 #
 # Every step: one checked-in script as its command (agents run with no-command-eval), an explicit
 # timeout, automatic retry only when the agent or guest is lost (-1, 255; limit 1 each), no plugins,
 # and no secret values in env. Steps run in parallel, each in its own fresh guest.
+# PR builds get no secrets: the only credentialed step (governance-enforce, registry read) runs on
+# main pushes only.
 
 agents:
   queue: fpc-isolated
@@ -21,6 +24,7 @@ steps:
   - label: ":scales: governance enforce (diff)"
     key: governance-enforce
     command: .buildkite/scripts/governance-enforce.sh
+    if: build.pull_request.id == null && build.branch == pipeline.default_branch
     timeout_in_minutes: 10
     retry:
       automatic:
