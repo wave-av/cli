@@ -1,0 +1,29 @@
+{
+  "$comment": "Hand-maintained from the repos.yaml entry (issue #212) while blocked-until-jake-ok: onboard refuses public repos without jake_ok. Re-run onboard after Jake OKs.",
+  "wave_ci": "a96f425a873f784a41feb34dd7f4e69efee9edc2",
+  "repo": "wave-av/cli",
+  "pipeline": "cli",
+  "template": "custom",
+  "visibility": "public",
+  "default_branch": "main",
+  "extra_steps": [
+    {
+      "key": "unit",
+      "label": ":typescript: type-check + build + unit tests",
+      "script": ".buildkite/scripts/unit.sh",
+      "timeout": 10
+    },
+    {
+      "key": "smoke",
+      "label": ":package: pack + fresh install smoke (version truth)",
+      "script": ".buildkite/scripts/smoke.sh",
+      "timeout": 15
+    },
+    {
+      "key": "license-truth",
+      "label": ":page_facing_up: license truth (offline)",
+      "script": ".buildkite/scripts/license-truth.sh",
+      "timeout": 10
+    }
+  ]
+}

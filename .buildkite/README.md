@@ -3,6 +3,15 @@
 This directory runs the CLI's pull-request and push checks on Buildkite. The GitHub Actions workflows
 under `.github/` are unchanged.
 
+The steps below are rendered from `wave-ci.json` by the wave-ci `custom` template (wave-ci#212):
+`pipeline.yml` is the thin uploader, `wave-ci.sh` renders + caps-lints + uploads. To change a step,
+edit `wave-ci.json` (keys, labels, scripts, timeouts), never the rendered output.
+
+`governance-enforce` is parked: cli is public, public repos get no job-secrets row, and
+`NODE_AUTH_TOKEN` is retired fleet-wide, so the enforcer install cannot run here yet. It stays in
+the table below as the documented target; the track is the Linear ticket linked from wave-ci#212
+(image-served enforcer vs fleet-level coverage).
+
 ## Steps
 
 | step key | mirrors (GitHub workflow / job) | credential |
