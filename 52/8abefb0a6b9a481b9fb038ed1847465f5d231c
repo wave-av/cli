@@ -1,0 +1,14 @@
+.buildkite/wave-ci.json
+  h_af5ac1a9798224 2,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "528abefb0a6b9a481b9fb038ed1847465f5d231c",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}

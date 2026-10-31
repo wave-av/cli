@@ -1,0 +1,14 @@
+.buildkite/scripts/lib/common.sh
+  h_af5ac1a9798224 28-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "23739bc0b2ee5b0df342efbb6529a6cadac78051",
+  "prompts": {},
+  "humans": {
+    "h_af5ac1a9798224": {
+      "author": "Jake Fineman <jakefineman@gmail.com>"
+    }
+  }
+}
