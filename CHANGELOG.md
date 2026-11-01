@@ -6,7 +6,44 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-09-28
+
+### Changed
+- **Banner no longer says "Enterprise Streaming Platform."** `wave --help`'s ASCII banner now
+  prints the current positioning line, `Media infrastructure for the agentic internet` — the
+  same line `package.json`'s own `description` field already carried — instead of the retired
+  "Enterprise Streaming Platform" tagline. Graded clean by `governance/voice/voice-gate.mjs`
+  (WAVE's voice-eval gate) before landing.
+- **`wave --help` no longer lists command groups the gateway does not serve today.** Per
+  `dec-unserved-families (b)` (WAVE Core go-live, decided 2026-09): `stream`, `studio`,
+  `editor`, `phone`, `collab` and `podcast` are hidden from the default top-level help listing.
+  Each is still fully registered — `wave <group> --help` shows its real, SDK-backed
+  subcommands exactly as before, and `wave --all` (new flag) shows every group, tagging the
+  hidden six `(not yet served)`. This was verified live on 2026-09-28: every route under these
+  six prefixes returns `404 ROUTE_NOT_FOUND` from `api.wave.online`, with the same body pointing
+  at the gateway's own free capability index. (The go-live definition's "camera/production"
+  family has no corresponding top-level `wave camera`/`wave production` command group to hide —
+  that gap is gateway/OpenAPI-only.)
+- **Running a now-hidden group's command fails before any network call.** Instead of a caller
+  discovering a raw 404 after a real HTTP round-trip, every subcommand inside `stream`,
+  `studio`, `editor`, `phone`, `collab` and `podcast` now exits `1` immediately (JSON shape
+  when the environment prefers JSON, colored stderr otherwise) with a message pointing at
+  `https://gateway.wave.online/.well-known/wave-skills.json` — the gateway's own list of what
+  IS served right now — instead of surfacing `ROUTE_NOT_FOUND`/`ROUTE_NOT_MAPPED` from a call
+  that was always going to fail.
+
 ### Fixed
+
+- **"Release drift check" (`.github/workflows/release-drift.yml`), reported failing daily since
+  2026-09-11.** Reproduced by running `scripts/release/check-drift.sh` locally against a clean
+  `origin/main` checkout: it reports `RESULT: IN SYNC (exit 0)` — tag `v1.0.10`, `package.json`
+  `1.0.10`, npm registry latest `1.0.10`, GitHub Release present, provenance present. The CI
+  failures are not release drift: every failing run's annotation reads "The job was not started
+  because your account is locked due to a billing issue" (confirmed across 25 consecutive daily
+  runs, 2026-09-11 through 2026-09-28, via `gh run view <id>` — the last *executed* run,
+  2026-09-10, was green). No code change fixes an org-wide Actions billing lock from inside
+  this repo; the fix is running the check locally (as this entry's receipt does) until the
+  scheduled Action is replaced with an unblocked CI plane.
 
 - `pr-agent` lane: fork-triggered `/` commands are now refused, and the AI
   call's budget fits inside its step. Three defects, one of them only visible

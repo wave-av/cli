@@ -56,6 +56,7 @@ import { registerLinkCommands } from "./commands/link/index.js";
 import { registerComposeCommands } from "./commands/compose/index.js";
 import { detectEnvironment } from "./lib/environment.js";
 import { CLI_VERSION } from "./lib/version.js";
+import { applyUnservedGroups } from "./lib/unserved.js";
 
 function printBanner(): void {
   // WAVE brand gradient: blue (#3366FF) -> purple (#7B41E8) -> cyan (#33BBCC)
@@ -72,7 +73,7 @@ function printBanner(): void {
   console.log(`  ${b("╚███╔███╔╝")} ${p("██║  ██║")} ${p(" ╚████╔╝ ")} ${c("███████╗")}`);
   console.log(`  ${b(" ╚══╝╚══╝ ")} ${p("╚═╝  ╚═╝")} ${p("  ╚═══╝  ")} ${c("╚══════╝")}`);
   console.log("");
-  console.log(`  ${d("Enterprise Streaming Platform")}  ${chalk.hex("#555")(`v${CLI_VERSION}`)}`);
+  console.log(`  ${d("Media infrastructure for the agentic internet")}  ${chalk.hex("#555")(`v${CLI_VERSION}`)}`);
   console.log(`  ${d("─".repeat(45))}`);
   console.log("");
 }
@@ -89,7 +90,8 @@ export function createProgram(): Command {
     .option("--org <id>", "Override organization")
     .option("-c, --confirm", "Skip confirmation prompts")
     .option("--no-color", "Disable colored output")
-    .option("--debug", "Verbose debug logging");
+    .option("--debug", "Verbose debug logging")
+    .option("--all", "Show every command group, including ones not yet served by the WAVE API");
 
   // Auth & Config
   registerAuthCommands(program);
@@ -169,6 +171,12 @@ export function createProgram(): Command {
   registerStatusCommands(program);
   registerCompletionCommands(program);
   registerApiCommands(program);
+
+  // Hide command groups the gateway does not serve yet from the default --help listing
+  // (dec-unserved-families (b), WAVE Core go-live). `wave --all` still shows them, tagged
+  // "(not yet served)", and every action in them fails BEFORE the network call with the
+  // gateway's own doc_url instead of a raw 404.
+  applyUnservedGroups(program);
 
   // Skip banner for AI agents and CI (they prefer clean output)
   const env = detectEnvironment();
