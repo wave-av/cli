@@ -32,6 +32,8 @@
      "config",
      "connect",
      "creator",
+     "crest",
+     "dante",
      "desktop",
      "dev",
      "distribution",
@@ -48,6 +50,7 @@
      "logs",
      "marketplace",
      "mesh",
+     "moq",
      "notify",
      "open",
      "org",
@@ -60,6 +63,7 @@
      "sentiment",
      "signage",
      "slides",
+     "srt",
      "status",
      "stream",
      "studio",
@@ -69,6 +73,8 @@
      "vault",
      "voice",
      "webhook-subscriptions",
+     "whep",
+     "whip",
      "whoami",
      "zoom"
     ]

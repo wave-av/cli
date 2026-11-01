@@ -1,104 +1,69 @@
 import { Command } from "commander";
-import chalk from "chalk";
-import { getClient } from "../../lib/api-client.js";
-import { formatOutput } from "../../lib/output/index.js";
-import { wrapCommand } from "../../lib/errors.js";
+import { previewExit } from "../../lib/preview.js";
+
+/**
+ * `wave phone *` used to call `client.phone.*`, which targets `/v1/phone`. Verified via the GA
+ * readiness audit: `POST /v1/phone` is in the same hard-break list as `/v1/streams` — 404
+ * ROUTE_NOT_FOUND, "no spoke and no override" (wave-gateway `src/forward-target.ts:89`) —
+ * telephony is not a served route on the public API. Marked preview per D1 (this lane's go-live
+ * fix plan): every subcommand now prints an honest preview notice and exits 2 WITHOUT
+ * constructing an SDK client or making any network call — mirrors `wave stream`, see that file's
+ * header for the full rationale.
+ */
+const PREVIEW_MESSAGE =
+  "Preview: phone/telephony is not on the public API yet. `/v1/phone` returns 404 ROUTE_NOT_FOUND.";
+
+const PREVIEW_SUBCOMMANDS = [
+  { name: "call", description: "[PREVIEW] Initiate a call — not served on the public API yet" },
+] as const;
+
+const PREVIEW_CONFERENCE_SUBCOMMANDS = [
+  { name: "create", description: "[PREVIEW] Create a conference — not served on the public API yet" },
+  { name: "list", description: "[PREVIEW] List conferences — not served on the public API yet" },
+] as const;
+
+const PREVIEW_NUMBERS_SUBCOMMANDS = [
+  { name: "list", description: "[PREVIEW] List numbers — not served on the public API yet" },
+  { name: "provision", description: "[PREVIEW] Provision a number — not served on the public API yet" },
+] as const;
 
 export function registerPhoneCommands(program: Command): void {
-  const phone = program.command("phone").description("Telephony and phone services");
+  const phone = program
+    .command("phone")
+    .description("[PREVIEW] Telephony — not on the public API yet")
+    .allowUnknownOption();
 
-  phone
-    .command("call")
-    .description("Initiate a phone call")
-    .requiredOption("--to <number>", "Destination phone number")
-    .requiredOption("--from <number>", "Source phone number")
-    .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.phone.makeCall({
-          to: opts.to,
-          from: opts.from,
-        });
-        console.log(chalk.green(`Call initiated: ${result.id}`));
-        formatOutput(result, program.opts());
-      }),
-    );
+  for (const { name, description } of PREVIEW_SUBCOMMANDS) {
+    phone
+      .command(`${name} [args...]`)
+      .description(description)
+      .allowUnknownOption()
+      .action(() => {
+        previewExit(PREVIEW_MESSAGE);
+      });
+  }
 
-  // Conference subcommands
-  const conference = phone.command("conference").description("Manage conference calls");
+  const conference = phone
+    .command("conference")
+    .description("[PREVIEW] Conference calls — not on the public API yet");
+  for (const { name, description } of PREVIEW_CONFERENCE_SUBCOMMANDS) {
+    conference
+      .command(`${name} [args...]`)
+      .description(description)
+      .allowUnknownOption()
+      .action(() => {
+        previewExit(PREVIEW_MESSAGE);
+      });
+  }
 
-  conference
-    .command("create")
-    .description("Create a conference call")
-    .requiredOption("--name <name>", "Conference name")
-    .option("--max-participants <n>", "Maximum participants")
-    .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        const result = await client.phone.createConference({
-          friendly_name: opts.name,
-          max_participants: opts.maxParticipants
-            ? parseInt(opts.maxParticipants)
-            : undefined,
-        });
-        console.log(chalk.green(`Conference created: ${result.id}`));
-        formatOutput(result, program.opts());
-      }),
-    );
-
-  conference
-    .command("list")
-    .description("List conference calls")
-    .action(
-      wrapCommand(async () => {
-        const client = await getClient(program.opts());
-        // listConferences, not getConference: this lists many, and the compiler's
-        // "did you mean getConference?" hint points at a single-fetch route.
-        const result = await client.phone.listConferences();
-        formatOutput(result.data, program.opts());
-      }),
-    );
-
-  // Numbers subcommands
-  const numbers = phone.command("numbers").description("Manage phone numbers");
-
-  numbers
-    .command("list")
-    .description("List provisioned phone numbers")
-    .action(
-      wrapCommand(async () => {
-        const client = await getClient(program.opts());
-        const result = await client.phone.listNumbers();
-        formatOutput(result.data, program.opts());
-      }),
-    );
-
-  numbers
-    .command("provision")
-    .description("Provision a new phone number")
-    .option("--country <code>", "Country code", "US")
-    .option("--area-code <code>", "Area code")
-    .action(
-      wrapCommand(async (opts) => {
-        const client = await getClient(program.opts());
-        // Provisioning is two API steps: search availability, then purchase a
-        // specific number. There is no single "provision" route.
-        const available = await client.phone.searchAvailableNumbers({
-          country_code: opts.country,
-          area_code: opts.areaCode,
-          limit: 1,
-        });
-        const candidate = available[0];
-        if (!candidate) {
-          throw new Error(
-            `No numbers available for country ${opts.country}` +
-              (opts.areaCode ? ` area code ${opts.areaCode}` : "") +
-              ".",
-          );
-        }
-        const result = await client.phone.purchaseNumber(candidate.number);
-        console.log(chalk.green(`Number provisioned: ${result.number}`));
-        formatOutput(result, program.opts());
-      }),
-    );
+  const numbers = phone.command("numbers").description("[PREVIEW] Phone numbers — not on the public API yet");
+  for (const { name, description } of PREVIEW_NUMBERS_SUBCOMMANDS) {
+    numbers
+      .command(`${name} [args...]`)
+      .description(description)
+      .allowUnknownOption()
+      .action(() => {
+        previewExit(PREVIEW_MESSAGE);
+      });
+  }
 }

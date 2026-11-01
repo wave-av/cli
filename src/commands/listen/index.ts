@@ -4,9 +4,12 @@ import { wrapCommand } from "../../lib/errors.js";
 import { connectSSE, type SSEEvent } from "../../lib/sse-client.js";
 import { getApiKey } from "../../lib/auth/keychain.js";
 import { loadConfig } from "../../lib/config/manager.js";
+import { getClient } from "../../lib/api-client.js";
+import { formatOutput } from "../../lib/output/index.js";
+import type { ListenSession, ListenSessionListResponse } from "./types.js";
 
 export function registerListenCommands(program: Command): void {
-  program
+  const listen = program
     .command("listen")
     .description("Listen for webhook events from WAVE")
     .option("--forward-to <url>", "URL to forward events to", "http://localhost:3000/webhooks/wave")
@@ -61,6 +64,51 @@ export function registerListenCommands(program: Command): void {
         await new Promise<void>((resolve) => {
           controller.signal.addEventListener("abort", () => resolve());
         });
+      }),
+    );
+
+  // `wave listen sessions *` — the unrelated "Listen" media spoke's session routes
+  // (`/v1/listen/sessions`), nested under the existing `listen` command rather than given a new
+  // top-level name: `wave listen` (no subcommand) keeps its webhook-forwarding behavior above,
+  // unchanged, for backward compatibility. No dedicated `listen` SDK module exists yet; reached
+  // through the SDK's already-published generic client, same pattern as `wave srt`/`wave moq`.
+  const sessions = listen.command("sessions").description("Manage Listen media sessions");
+
+  sessions
+    .command("create")
+    .description("Create a Listen session (POST /v1/listen/sessions)")
+    .requiredOption("--title <title>", "Session title")
+    .action(
+      wrapCommand(async (opts) => {
+        const client = await getClient(program.opts());
+        const result = await client.client.post<ListenSession>("/v1/listen/sessions", { title: opts.title });
+        console.log(chalk.green(`Listen session created: ${result.id}`));
+        formatOutput(result, program.opts());
+      }),
+    );
+
+  sessions
+    .command("list")
+    .description("List Listen sessions (GET /v1/listen/sessions)")
+    .option("--limit <n>", "Maximum results", "20")
+    .action(
+      wrapCommand(async (opts) => {
+        const client = await getClient(program.opts());
+        const result = await client.client.get<ListenSessionListResponse>("/v1/listen/sessions", {
+          params: { limit: Number(opts.limit) },
+        });
+        formatOutput(result.data, program.opts());
+      }),
+    );
+
+  sessions
+    .command("get <id>")
+    .description("Get a Listen session (GET /v1/listen/sessions/:id)")
+    .action(
+      wrapCommand(async (id: string) => {
+        const client = await getClient(program.opts());
+        const result = await client.client.get<ListenSession>(`/v1/listen/sessions/${encodeURIComponent(id)}`);
+        formatOutput(result, program.opts());
       }),
     );
 }

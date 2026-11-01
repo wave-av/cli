@@ -54,6 +54,12 @@ import { registerCompletionCommands } from "./commands/completion/index.js";
 import { registerApiCommands } from "./commands/api/index.js";
 import { registerLinkCommands } from "./commands/link/index.js";
 import { registerComposeCommands } from "./commands/compose/index.js";
+import { registerSrtCommands } from "./commands/srt/index.js";
+import { registerMoqCommands } from "./commands/moq/index.js";
+import { registerWhipCommands } from "./commands/whip/index.js";
+import { registerWhepCommands } from "./commands/whep/index.js";
+import { registerCrestCommands } from "./commands/crest/index.js";
+import { registerDanteCommands } from "./commands/dante/index.js";
 import { detectEnvironment } from "./lib/environment.js";
 import { CLI_VERSION } from "./lib/version.js";
 
@@ -101,6 +107,14 @@ export function createProgram(): Command {
   // Core APIs (P1)
   registerStreamCommands(program);
   registerStudioCommands(program);
+
+  // Live transport (GA go-live: media-engine)
+  registerSrtCommands(program);
+  registerMoqCommands(program);
+  registerWhipCommands(program);
+  registerWhepCommands(program);
+  registerCrestCommands(program);
+  registerDanteCommands(program);
 
   // Production (P1)
   registerClipCommands(program);
