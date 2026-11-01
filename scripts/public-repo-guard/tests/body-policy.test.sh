@@ -84,7 +84,46 @@ GUARD_PRIVATE_REPOS=$'wave-gateway\r\nwave-transports\r\nagent-money\r' \
 expect 1 'CRLF-separated GUARD_PRIVATE_REPOS still scans every name' \
   'The MOQ_JOIN_SECRET was added; wave-transports picks it up on deploy.'
 
+# --- must BLOCK: the TITLE / COMMIT-MESSAGE class -----------------------------
+# The shape that actually leaked on 2026-09-10: an internal tracking id inside a
+# conventional-commit scope, in a PR TITLE and in the commit messages under it.
+# Nothing read either surface, because the only gate in front of them scanned FILE
+# CONTENT. This is the regression case for that whole class.
+expect 1 'internal id in a conventional-commit scope (the real title-leak shape)' \
+  'fix(REL-003): the canary marker never matched'
+expect 1 'the same id in a commit message body' \
+  'Marker now matches on the whole line. Closes SUPPLY-001.'
+expect 1 'internal decision-record id' \
+  'Deployed under IGV-D-005 after the soak.'
+expect 1 'internal plan / workstream id' \
+  'Tracked in E4-GAM-PUBLIC, row 9 of the target table.'
+expect 1 'internal process document path' \
+  'Per governance/plans/public-supply-chain/E4.md the guard is vendored.'
+expect 1 'wikilink to an internal rule' \
+  'This follows [[proven-live-or-not-done]] so the receipt is attached.'
+expect 1 'long-hyphenated internal rule filename' \
+  'Stated in rules/public-repo-rules-for-build-agents.md, rule 2.'
+
 # --- must PASS (precision — these keep the gate deployable) -------------------
+# The standards / algorithm / branch silhouettes. Every one of these shares the
+# XX-### outline with an internal id and appears constantly in legitimate public
+# release notes; a gate that blocks them is a gate that gets switched off in a day.
+expect 0 'checksum algorithm name (SHA-256) is not an internal id' \
+  'Verify the SHA-256 of the release asset against the checksums file.'
+expect 0 'standards names (PEP-503, ISO-8601, CWE-200) are not internal ids' \
+  'PEP-503 normalizes names; timestamps are ISO-8601; see CWE-200 for the class.'
+expect 0 'a CVE id has four digits and is ordinary open-source content' \
+  'Bump the transport dep to 0.28.1 for CVE-2025-12345; no API change.'
+expect 0 'lowercase branch and runbook words keep the shape but are not ids' \
+  'Opened from fix/issue-123 against main; step-001 of the runbook.'
+expect 0 'an eslint-style rules/ doc path is not an internal document path' \
+  'Documented in rules/no-unused-vars.md; see docs/rules.md.'
+expect 0 'a bare governance word is not an internal path' \
+  'The release notes now describe the governance of the signing key.'
+expect 0 'an ordinary conventional-commit scope is untouched' \
+  'fix(release): generate the SBOM after install, not before'
+expect 0 'talking about the id rule is prose about the control' \
+  'body-policy now blocks an internal id like REL-003 in a title.'
 expect 0 'bare private-repo cross-reference' \
   'This is the companion change to wave-transports#260; merge that one first.'
 expect 0 'two private repos, no operational detail' \
