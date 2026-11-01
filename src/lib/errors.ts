@@ -2,11 +2,72 @@ import chalk from "chalk";
 import { WaveError, RateLimitError } from "@wave-av/sdk";
 import { EXIT_CODES } from "./exit-codes.js";
 import { detectEnvironment } from "./environment.js";
+import { sanitizeForTerminal } from "./terminal.js";
+
+/**
+ * Local configuration the CLI refuses to use or overwrite: an unreadable or malformed
+ * ~/.wave/config.json, or an API base URL that would send credentials without TLS. Exit 9.
+ */
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigError";
+  }
+}
+
+/** 128 + SIGKILL: how a process ends after a keychain timeout (see wrapCommand). */
+export const KEYCHAIN_TIMEOUT_EXIT_STATUS = 137;
+
+/**
+ * The OS keychain did not answer in time (lib/auth/keychain.ts). The native call behind it is still
+ * blocked on a libuv threadpool thread, and Node's process.exit() joins that pool, so a normal exit
+ * would hang too: wrapCommand terminates the process with SIGKILL after printing the message.
+ */
+export class KeychainTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "KeychainTimeoutError";
+  }
+}
 import {
+  PAYMENT_SUGGESTIONS,
+  formatSuggestion,
   getAuthSuggestions,
   getRateLimitSuggestions,
   toStructuredError,
 } from "./suggestions.js";
+
+/**
+ * What a 402 means when the response body did not say. The gateway's spend-cap refusal is a flat
+ * `{error:"spend_cap_exceeded", code, message, dimension}`, and @wave-av/sdk 2.1.3 reads only the
+ * nested `{error:{code,message}}` shape, so every SDK-backed command (`clip list`, `voice
+ * list-voices`, ...) received a bare `HTTP_402 Payment Required`. Raw routes (lib/gateway.ts) keep
+ * the gateway's own code and message; this text stands in only for the generic one.
+ */
+export const PAYMENT_REQUIRED_MESSAGE =
+  "Payment required (HTTP 402): this request needs a payment method or goes beyond your plan's " +
+  "included allotment. The API refused it, so nothing was performed or charged.";
+
+/** A 402: the gateway's own code/message when it sent one, else PAYMENT_REQUIRED and the text above. */
+function formatPaymentRequired(error: WaveError, preferJson: boolean): { message: string; exitCode: number } {
+  const exitCode = EXIT_CODES.GENERAL_ERROR;
+  const generic = error.code === "HTTP_402";
+  const code = generic ? "PAYMENT_REQUIRED" : error.code;
+  const message = generic ? PAYMENT_REQUIRED_MESSAGE : error.message;
+  const dimension = typeof error.details?.["dimension"] === "string" ? (error.details["dimension"] as string) : undefined;
+  if (preferJson) {
+    const structured = toStructuredError(code, message, exitCode, PAYMENT_SUGGESTIONS, error.requestId);
+    if (dimension) Object.assign(structured.error, { dimension });
+    return { message: JSON.stringify(structured, null, 2), exitCode };
+  }
+  const lines = [
+    chalk.red(sanitizeForTerminal(message)),
+    chalk.dim(`  Code: ${sanitizeForTerminal(code)} | Status: 402`),
+    dimension ? chalk.dim(`  Dimension: ${sanitizeForTerminal(dimension)}`) : "",
+    error.requestId ? chalk.dim(`  Request ID: ${sanitizeForTerminal(error.requestId)}`) : "",
+  ].filter(Boolean);
+  return { message: `${lines.join("\n")}\n\n${PAYMENT_SUGGESTIONS.map(formatSuggestion).join("\n\n")}`, exitCode };
+}
 
 /**
  * A command whose SDK call is real and correctly typed, but whose gateway route has no live backend
@@ -25,8 +86,88 @@ export class CapabilityUnavailableError extends Error {
   }
 }
 
+/**
+ * No credential at all: neither WAVE_API_KEY nor a key stored by `wave auth login`. Raised BEFORE
+ * any request, so it carries no status code or request ID.
+ */
+export class AuthRequiredError extends Error {
+  constructor(message = "Not authenticated. Run `wave auth login` (or set WAVE_API_KEY) first.") {
+    super(message);
+    this.name = "AuthRequiredError";
+  }
+}
+
+/**
+ * Gateway codes meaning "no WAVE capability is served at this path": ROUTE_NOT_FOUND (no spoke)
+ * and ROUTE_NOT_MAPPED (fail-closed: no scope rule). Neither means "your resource does not exist",
+ * so they must not read as an ordinary 404 that invites the user to retry with another ID.
+ */
+const UNSERVED_ROUTE_CODES = new Set(["ROUTE_NOT_FOUND", "ROUTE_NOT_MAPPED"]);
+
+/** True when the command line asked for JSON (-o json, --output json, --output=json). */
+export function argvRequestsJson(argv: readonly string[]): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if ((arg === "-o" || arg === "--output") && argv[i + 1] === "json") return true;
+    if (arg === "--output=json" || arg === "-ojson") return true;
+  }
+  return false;
+}
+
 export function formatCLIError(error: unknown): { message: string; exitCode: number } {
-  const env = detectEnvironment();
+  const detected = detectEnvironment();
+  const env = { ...detected, preferJson: detected.preferJson || argvRequestsJson(process.argv) };
+
+  if (error instanceof AuthRequiredError) {
+    const exitCode = EXIT_CODES.AUTH_REQUIRED;
+    if (env.preferJson) {
+      const structured = toStructuredError("AUTH_REQUIRED", error.message, exitCode, [
+        { message: "Authenticate", command: "wave auth login" },
+        { message: "Use an API key", command: "export WAVE_API_KEY=..." },
+      ]);
+      return { message: JSON.stringify(structured, null, 2), exitCode };
+    }
+    return { message: chalk.red(sanitizeForTerminal(error.message)), exitCode };
+  }
+
+  if (error instanceof WaveError && UNSERVED_ROUTE_CODES.has(error.code)) {
+    const exitCode = EXIT_CODES.NOT_IMPLEMENTED;
+    const message =
+      `This command's API route is not served by the WAVE API yet (${error.code}). ` +
+      "Nothing was created or charged.";
+    if (env.preferJson) {
+      const structured = toStructuredError(error.code, message, exitCode, [], error.requestId);
+      return { message: JSON.stringify(structured, null, 2), exitCode };
+    }
+    const lines = [
+      chalk.yellow(message),
+      error.requestId ? chalk.dim(`  Request ID: ${sanitizeForTerminal(error.requestId)}`) : "",
+    ].filter(Boolean);
+    return { message: lines.join("\n"), exitCode };
+  }
+
+  if (error instanceof ConfigError) {
+    const exitCode = EXIT_CODES.CONFIG_ERROR;
+    if (env.preferJson) {
+      const structured = toStructuredError("CONFIG_ERROR", error.message, exitCode, []);
+      return { message: JSON.stringify(structured, null, 2), exitCode };
+    }
+    // Carries WAVE_BASE_URL / the saved baseUrl / a file path verbatim: same rule as API text.
+    return { message: chalk.red(sanitizeForTerminal(error.message)), exitCode };
+  }
+
+  if (error instanceof KeychainTimeoutError) {
+    // The real exit status: wrapCommand has to SIGKILL the process (see KeychainTimeoutError).
+    const exitCode = KEYCHAIN_TIMEOUT_EXIT_STATUS;
+    if (env.preferJson) {
+      const structured = toStructuredError("KEYCHAIN_TIMEOUT", error.message, exitCode, [
+        { message: "Use an API key for this shell", command: "export WAVE_API_KEY=..." },
+        { message: "Use the credentials file", command: "export WAVE_CREDENTIAL_STORE=file" },
+      ]);
+      return { message: JSON.stringify(structured, null, 2), exitCode };
+    }
+    return { message: chalk.red(sanitizeForTerminal(error.message)), exitCode };
+  }
 
   if (error instanceof CapabilityUnavailableError) {
     const exitCode = EXIT_CODES.NOT_IMPLEMENTED;
@@ -34,7 +175,7 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       const structured = toStructuredError("CAPABILITY_UNAVAILABLE", error.message, exitCode, []);
       return { message: JSON.stringify(structured, null, 2), exitCode };
     }
-    return { message: chalk.yellow(error.message), exitCode };
+    return { message: chalk.yellow(sanitizeForTerminal(error.message)), exitCode };
   }
 
   if (error instanceof RateLimitError) {
@@ -44,8 +185,8 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
         `Rate limit exceeded. Retry after ${error.retryAfter}ms.`,
         EXIT_CODES.RATE_LIMITED,
         [
-          { message: "Check your limits", command: "wave billing limits" },
-          { message: "Upgrade your plan", command: "wave billing upgrade" },
+          { message: "Check your usage", command: "wave billing usage" },
+          { message: "Check your plan", command: "wave billing status" },
         ],
         error.requestId,
       );
@@ -55,6 +196,10 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       message: getRateLimitSuggestions(),
       exitCode: EXIT_CODES.RATE_LIMITED,
     };
+  }
+
+  if (error instanceof WaveError && error.statusCode === 402) {
+    return formatPaymentRequired(error, env.preferJson);
   }
 
   if (error instanceof WaveError) {
@@ -69,7 +214,7 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
     if (env.preferJson) {
       const suggestions =
         error.statusCode === 401
-          ? [{ message: "Authenticate", command: "wave login" }, { message: "Use API key", command: "export WAVE_API_KEY=..." }]
+          ? [{ message: "Authenticate", command: "wave auth login" }, { message: "Use API key", command: "export WAVE_API_KEY=..." }]
           : error.statusCode === 404
             ? [{ message: "List resources", command: "wave <resource> list" }]
             : [];
@@ -87,10 +232,11 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       return { message: getAuthSuggestions(), exitCode };
     }
 
+    // Message, code and request ID come from the response body: never let them drive the terminal.
     const lines = [
-      chalk.red(error.message),
-      chalk.dim(`  Code: ${error.code} | Status: ${error.statusCode}`),
-      error.requestId ? chalk.dim(`  Request ID: ${error.requestId}`) : "",
+      chalk.red(sanitizeForTerminal(error.message)),
+      chalk.dim(`  Code: ${sanitizeForTerminal(error.code)} | Status: ${error.statusCode}`),
+      error.requestId ? chalk.dim(`  Request ID: ${sanitizeForTerminal(error.requestId)}`) : "",
       error.retryable ? chalk.yellow("  This error is retryable.") : "",
     ].filter(Boolean);
 
@@ -108,15 +254,21 @@ export function formatCLIError(error: unknown): { message: string; exitCode: num
       return { message: JSON.stringify(structured, null, 2), exitCode: EXIT_CODES.GENERAL_ERROR };
     }
     return {
-      message: chalk.red(`Error: ${error.message}`),
+      message: chalk.red(`Error: ${sanitizeForTerminal(error.message)}`),
       exitCode: EXIT_CODES.GENERAL_ERROR,
     };
   }
 
   return {
-    message: chalk.red(`Unexpected error: ${String(error)}`),
+    // A thrown non-Error can be anything, including text with terminal escapes.
+    message: chalk.red(`Unexpected error: ${sanitizeForTerminal(String(error))}`),
     exitCode: EXIT_CODES.GENERAL_ERROR,
   };
+}
+
+/** The exit code a failure maps to, for commands that print their own error output (`wave api`). */
+export function exitCodeFor(error: unknown): number {
+  return formatCLIError(error).exitCode;
 }
 
 export function wrapCommand<T extends unknown[]>(
@@ -127,6 +279,12 @@ export function wrapCommand<T extends unknown[]>(
       await fn(...args);
     } catch (error) {
       const { message, exitCode } = formatCLIError(error);
+      if (error instanceof KeychainTimeoutError) {
+        // process.exit() would hang: it joins the libuv threadpool, where the keychain call is
+        // still blocked. Flush the message, then end the process the only way that cannot hang.
+        process.stderr.write(`${message}\n`, () => process.kill(process.pid, "SIGKILL"));
+        return;
+      }
       console.error(message);
       process.exit(exitCode);
     }

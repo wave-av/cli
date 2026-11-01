@@ -21,6 +21,7 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke:live": "node scripts/smoke/live-connectivity.mjs",
     "lint": "eslint src/",
     "license:check": "node scripts/license-truth.mjs check",
     "license:ledger": "node scripts/license-truth.mjs ledger",
@@ -46,7 +47,7 @@
     "url": "https://github.com/wave-av/cli.git",
     "directory": "."
   },
-  "homepage": "https://docs.wave.online/cli",
+  "homepage": "https://docs.wave.online/docs/cli",
   "bugs": {
     "url": "https://github.com/wave-av/cli/issues"
   },

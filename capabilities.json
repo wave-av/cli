@@ -45,6 +45,8 @@
      "init",
      "link",
      "listen",
+     "login",
+     "logout",
      "logs",
      "marketplace",
      "mesh",

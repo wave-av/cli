@@ -1,50 +1,24 @@
 import { Wave } from "@wave-av/sdk";
 import chalk from "chalk";
-import { loadConfig } from "./config/manager.js";
-import { getApiKey } from "./auth/keychain.js";
+import { resolveCredentials } from "./auth/credentials.js";
+import { AuthRequiredError } from "./errors.js";
 import { CLI_VERSION } from "./version.js";
 
 export async function getClient(opts?: { org?: string; project?: string }): Promise<Wave> {
-  // Environment variable override (for CI/CD)
-  const envApiKey = process.env["WAVE_API_KEY"];
-  const envOrgId = process.env["WAVE_ORG_ID"];
-  const envBaseUrl = process.env["WAVE_BASE_URL"];
-
-  if (envApiKey) {
-    return new Wave({
-      apiKey: envApiKey,
-      organizationId: envOrgId ?? opts?.org,
-      baseUrl: envBaseUrl,
-    });
-  }
-
-  const config = await loadConfig();
-  const projectName = opts?.project ?? process.env["WAVE_PROJECT"] ?? config.currentProject;
-
-  const project = config.projects[projectName];
-  if (!project) {
-    console.error(
-      chalk.red(
-        `No project "${projectName}" configured. Run ${chalk.bold("wave login")} to authenticate.`,
-      ),
-    );
-    process.exit(1);
-  }
-
-  const apiKey = await getApiKey(projectName);
-  if (!apiKey) {
-    console.error(
-      chalk.red(
-        `No API key found for project "${projectName}". Run ${chalk.bold("wave login")} to authenticate.`,
-      ),
-    );
-    process.exit(1);
+  // Credential + host resolution is shared with every raw-fetch command (lib/auth/credentials.ts):
+  // WAVE_API_KEY first, then the key `wave auth login` stored. A stored key with no saved project
+  // entry is fine: the gateway resolves the org from the key, and the host defaults to the API.
+  // 1.0.10 exited with 'No project "default" configured' here, so a freshly stored key was unusable.
+  // Organization: --org, then WAVE_ORG_ID, then the project's saved org (resolved there too).
+  const creds = await resolveCredentials({ project: opts?.project, org: opts?.org });
+  if (!creds) {
+    throw new AuthRequiredError();
   }
 
   const client = new Wave({
-    apiKey,
-    organizationId: opts?.org ?? project.organizationId,
-    baseUrl: project.baseUrl,
+    apiKey: creds.apiKey,
+    organizationId: creds.organizationId,
+    baseUrl: creds.baseUrl,
     customHeaders: {
       "X-Wave-Source": "cli",
       "X-Wave-CLI-Version": CLI_VERSION,

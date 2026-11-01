@@ -56,7 +56,7 @@ export function registerOrgCommands(program: Command): void {
         const config = await loadConfig();
         const project = config.projects[config.currentProject];
         if (!project) {
-          console.log(chalk.yellow("No organization configured. Run `wave login` first."));
+          console.log(chalk.yellow("No organization configured. Run `wave auth login`, then `wave link`."));
           return;
         }
         formatOutput(

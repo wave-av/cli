@@ -1,8 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { wrapCommand } from "../../lib/errors.js";
-import { getApiKey } from "../../lib/auth/keychain.js";
 import { loadConfig } from "../../lib/config/manager.js";
+import {
+  resolveBaseUrl,
+  resolveCredentials,
+  resolveProjectName,
+} from "../../lib/auth/credentials.js";
 import { formatOutput } from "../../lib/output/index.js";
 
 export function registerStatusCommands(program: Command): void {
@@ -12,16 +16,18 @@ export function registerStatusCommands(program: Command): void {
     .action(
       wrapCommand(async () => {
         const config = await loadConfig();
-        const project = config.currentProject || "default";
-        const apiKey = await getApiKey(project);
-        // The API endpoint, not the marketing site: config.projects[x].baseUrl / this default
-        // must point at the WAVE API (api.wave.online), never wave.online (the marketing site),
-        // which doesn't serve /health and would make this check falsely appear healthy on any
-        // 200-returning page.
-        const baseUrl = config.projects[project]?.baseUrl ?? "https://api.wave.online";
+        const project = resolveProjectName(config, program.opts().project);
+        // WAVE_API_KEY counts as authenticated here too (1.0.10 read only the keychain, so CI
+        // users with the env var set were told "Not authenticated").
+        const creds = await resolveCredentials({ project });
+        // The API endpoint, not the marketing site: WAVE_BASE_URL / config.projects[x].baseUrl /
+        // the default must point at the WAVE API (api.wave.online), never wave.online (the
+        // marketing site), which doesn't serve /health and would make this check falsely appear
+        // healthy on any 200-returning page.
+        const baseUrl = resolveBaseUrl(config, project);
 
         // Check auth status
-        const authenticated = !!apiKey;
+        const authenticated = !!creds;
 
         // Check API health
         let apiHealthy = false;
@@ -46,27 +52,30 @@ export function registerStatusCommands(program: Command): void {
           apiLatencyMs,
         };
 
-        // Interactive display
-        console.log(chalk.bold("\nWAVE CLI Status\n"));
-        console.log(
-          `  Auth:     ${authenticated ? chalk.green("Authenticated") : chalk.red("Not authenticated")}`,
-        );
-        console.log(`  Project:  ${chalk.cyan(project)}`);
-        console.log(
-          `  Org:      ${chalk.cyan(config.projects[project]?.organizationName ?? "N/A")}`,
-        );
-        console.log(`  Endpoint: ${chalk.cyan(baseUrl)}`);
-        console.log(
-          `  API:      ${apiHealthy ? chalk.green(`Healthy (${apiLatencyMs}ms)`) : chalk.red("Unreachable")}`,
-        );
-        console.log("");
+        const output = program.opts().output;
+        if (output === "json" || output === "yaml") {
+          // Exactly one machine-readable document on stdout (1.0.10 printed the human block first,
+          // so `wave status -o json | jq` failed to parse).
+          formatOutput(status, program.opts());
+        } else {
+          console.log(chalk.bold("\nWAVE CLI Status\n"));
+          console.log(
+            `  Auth:     ${authenticated ? chalk.green("Authenticated") : chalk.red("Not authenticated")}`,
+          );
+          console.log(`  Project:  ${chalk.cyan(project)}`);
+          console.log(
+            `  Org:      ${chalk.cyan(config.projects[project]?.organizationName ?? "N/A")}`,
+          );
+          console.log(`  Endpoint: ${chalk.cyan(baseUrl)}`);
+          console.log(
+            `  API:      ${apiHealthy ? chalk.green(`Healthy (${apiLatencyMs}ms)`) : chalk.red("Unreachable")}`,
+          );
+          console.log("");
 
-        if (!authenticated) {
-          console.log(chalk.yellow("  Run `wave auth login` to authenticate.\n"));
+          if (!authenticated) {
+            console.log(chalk.yellow("  Run `wave auth login` (or set WAVE_API_KEY) to authenticate.\n"));
+          }
         }
-
-        // Machine-readable output (--output json/yaml)
-        formatOutput(status, program.opts());
 
         // Not authenticated or the API is unreachable is a real failure for scripts/agents
         // parsing this command's exit code — surface it instead of silently exiting 0.

@@ -1,39 +1,16 @@
 import { Command } from "commander";
-import chalk from "chalk";
-import { formatOutput } from "../../lib/output/index.js";
-import { wrapCommand } from "../../lib/errors.js";
-import { loadConfig } from "../../lib/config/manager.js";
-import { getApiKey } from "../../lib/auth/keychain.js";
+import { wrapCommand, CapabilityUnavailableError } from "../../lib/errors.js";
 
-async function adminFetch(
-  path: string,
-  opts?: { method?: string; body?: unknown },
-): Promise<unknown> {
-  const config = await loadConfig();
-  const project = config.projects[config.currentProject];
-  const baseUrl = project?.baseUrl ?? process.env["WAVE_BASE_URL"] ?? "https://wave.online";
-  const apiKey = await getApiKey(config.currentProject);
+/**
+ * `wave admin jobs list|trigger` called https://wave.online/api/admin/jobs (the marketing host;
+ * 404 ROUTE_NOT_FOUND live) and the WAVE API has no admin-jobs route. Registered so `--help` still
+ * shows the interface, but every action stops before any network call.
+ */
+const ADMIN_UNAVAILABLE =
+  "`wave admin jobs` is not available: the WAVE API has no background-jobs route. Nothing was sent.";
 
-  if (!apiKey) {
-    throw new Error(`No API key found. Run ${chalk.bold("wave login")} to authenticate.`);
-  }
-
-  const res = await fetch(`${baseUrl}${path}`, {
-    method: opts?.method ?? "GET",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "X-Wave-Source": "cli",
-    },
-    body: opts?.body ? JSON.stringify(opts.body) : undefined,
-  });
-
-  if (!res.ok) {
-    const error = (await res.json().catch(() => ({}))) as { message?: string };
-    throw new Error(error.message ?? `Admin API error: ${res.status} ${res.statusText}`);
-  }
-
-  return res.json();
+function unavailable(): never {
+  throw new CapabilityUnavailableError(ADMIN_UNAVAILABLE, "admin");
 }
 
 export function registerAdminCommands(program: Command): void {
@@ -41,35 +18,17 @@ export function registerAdminCommands(program: Command): void {
     .command("admin")
     .description("Administrative commands (requires admin role)");
 
-  const jobs = admin.command("jobs").description("Manage background jobs");
+  const jobs = admin.command("jobs").description("Manage background jobs (not yet served by the API)");
 
   jobs
     .command("list")
-    .description("List background job functions")
+    .description("List background job functions (not yet served by the API)")
     .option("--status <status>", "Filter by status (active, paused, failed)")
-    .action(
-      wrapCommand(async (opts) => {
-        const params = new URLSearchParams();
-        if (opts.status) params.set("status", opts.status);
-        const query = params.toString();
-        const result = await adminFetch(`/api/admin/jobs${query ? `?${query}` : ""}`);
-        formatOutput(result, program.opts());
-      }),
-    );
+    .action(wrapCommand(async () => unavailable()));
 
   jobs
     .command("trigger <functionId>")
-    .description("Manually trigger a background job function")
+    .description("Manually trigger a background job function (not yet served by the API)")
     .option("--data <json>", "JSON data payload for the job")
-    .action(
-      wrapCommand(async (functionId: string, opts) => {
-        const data = opts.data ? JSON.parse(opts.data as string) : undefined;
-        const result = await adminFetch(`/api/admin/jobs/${functionId}/trigger`, {
-          method: "POST",
-          body: data ? { data } : undefined,
-        });
-        console.log(chalk.green(`Job "${functionId}" triggered.`));
-        formatOutput(result, program.opts());
-      }),
-    );
+    .action(wrapCommand(async () => unavailable()));
 }
