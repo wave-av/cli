@@ -1,5 +1,6 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
+import helmet from "helmet";
 import { Wave } from "@wave/sdk";
 
 const wave = new Wave({
@@ -7,6 +8,7 @@ const wave = new Wave({
 });
 
 const app = express();
+app.use(helmet());
 
 // WAVE sends JSON payloads for webhook events
 app.use(express.json());
