@@ -7,7 +7,7 @@ under `.github/` are unchanged.
 
 | step key | mirrors (GitHub workflow / job) | credential |
 |---|---|---|
-| `governance-enforce` | governance-enforce.yml `enforce` | `NODE_AUTH_TOKEN` (GitHub Packages read, for `@wave-av/governance`) |
+| `governance-enforce` | governance-enforce.yml `enforce` | `WAVE_REGISTRY_READ_TOKEN` and `WAVE_REGISTRY_URL` (private registry read, for `@wave-av/governance`) |
 | `unit` | smoke-install.yml `unit` (type-check, build, unit tests) | none |
 | `smoke` | smoke-install.yml `smoke` (pack, fresh install, version and banner check) | none |
 | `license-truth` | license-truth.yml `local-truth` | none |
@@ -31,16 +31,22 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
 
 ## Credentials
 
-The only credential in this pipeline is `NODE_AUTH_TOKEN`. The agent environment provides it to the
-`governance-enforce` step only. The script moves it into a non-exported shell variable before
-anything else runs. It hands the token to the single `npm install` of the enforcer through a
-job-local npmrc placeholder, so the token is never written to disk or printed. The install runs
-with `--ignore-scripts`. Builds of pull requests from forks never receive it.
+The only credential in this pipeline is `WAVE_REGISTRY_READ_TOKEN`, the read-only token of WAVE's
+self-hosted private npm registry (GitHub Packages is retired; `NODE_AUTH_TOKEN` is no longer read). It
+would come with `WAVE_REGISTRY_URL`, the registry's base URL, which this public repository never names.
+Both are for the `governance-enforce` step only. The script moves them into non-exported shell
+variables before anything else runs. It hands the token to the single `npm install` of the enforcer
+through a job-local npmrc placeholder, so the token is never written to disk or printed, and deletes
+that npmrc when the install returns. The install runs with `--ignore-scripts`. Builds of pull requests
+from forks never receive it.
+
+The host gives a public repository no job-secrets row today, so `governance-enforce` stops at its
+first check (`WAVE_REGISTRY_READ_TOKEN is not set`) before any credential could be used.
 
 ## Build-image prerequisites
 
 Node 22 with npm, `bash`, `git`, `grep`, `sed`, `find`. Network access to `registry.npmjs.org`, plus
-`npm.pkg.github.com` for `governance-enforce`.
+the private registry (`WAVE_REGISTRY_URL`) and its CA in the image for `governance-enforce`.
 
 ## Run locally
 
