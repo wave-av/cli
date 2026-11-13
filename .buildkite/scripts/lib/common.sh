@@ -6,8 +6,9 @@
 #   - Branch names, commit messages and PR titles are untrusted data: never eval'd, never interpolated
 #     into a command string. Any BUILDKITE_* value used as an argument is validated first.
 #   - Temp dirs are job-local and removed on exit.
-#   - The one credential any step uses (NODE_AUTH_TOKEN, governance-enforce only) is moved into a
-#     NON-exported shell variable here, before anything else runs.
+#   - The one credential any step uses (WAVE_REGISTRY_READ_TOKEN, governance-enforce only) and the
+#     registry URL that goes with it (WAVE_REGISTRY_URL) are moved into NON-exported shell variables
+#     here, before anything else runs.
 set -euo pipefail
 
 BK_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -18,8 +19,12 @@ BK_SAME_REPO_RE='^(https://|git://|ssh://git@|git@)github\.com[:/]wave-av/cli(\.
 _bk_cleanup_paths=()
 
 # shellcheck disable=SC2034 # read by lib/npm-install.sh
-_BK_NPM_TOKEN="${NODE_AUTH_TOKEN:-}"
-unset NODE_AUTH_TOKEN
+_BK_NPM_TOKEN="${WAVE_REGISTRY_READ_TOKEN:-}"
+# shellcheck disable=SC2034 # read by lib/npm-install.sh
+_BK_REGISTRY_URL="${WAVE_REGISTRY_URL:-}"
+# NODE_AUTH_TOKEN is the retired GitHub Packages name. It is unset so no child process inherits a stale
+# host grant, and never read.
+unset WAVE_REGISTRY_READ_TOKEN WAVE_REGISTRY_URL NODE_AUTH_TOKEN
 
 bk_cleanup_on_exit() {
   local p
