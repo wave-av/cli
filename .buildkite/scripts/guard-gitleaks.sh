@@ -7,17 +7,18 @@
 # not assume sudo, so the verified binary runs from a temp dir instead. Same scan.
 #
 # Fork trust: on PR builds nothing executes from the PR checkout except as scan source.
-# main() first re-execs the base-branch-tip copy of THIS script (a PR that rewrites the
-# guard just re-installs the trusted copy), then scans the PR worktree with the base-tip
-# .gitleaks.toml. A base tip without a config scans with gitleaks' built-in default rules
-# plus a loud warning. The base branch is always fetched explicitly (never a possibly
-# stale or absent origin/<base>). A base branch that cannot be fetched, a missing base
-# script, or a missing or invalid base-branch name all fail closed (exit 2). Default-branch builds run directly with the
+# main() first re-execs the default-branch-tip copy of THIS script (a PR that rewrites
+# the guard just re-installs the trusted copy), then scans the PR worktree with the
+# default-branch .gitleaks.toml. A default branch without a config scans with gitleaks'
+# built-in default rules plus a loud warning. The default branch is always fetched
+# explicitly (never the PR's chosen base, never a possibly stale origin/<branch>). A
+# default branch that cannot be fetched, a missing trusted script, or a missing or
+# invalid default-branch name all fail closed (exit 2). Default-branch builds run directly with the
 # worktree config (HEAD is trusted there). GITLEAKS_BIN, when set, skips the download
 # (test seam; CI never sets it).
 #
 # Bootstrap: until this file is on the default branch, a PR build fails closed here
-# ("base ... has no guard script"). That is intended: the guard never trusts PR content.
+# ("default branch has no guard script"). That is intended: the guard never trusts PR content.
 set -euo pipefail
 
 GITLEAKS_VERSION="8.30.1"
@@ -28,30 +29,33 @@ is_pr_build() {
   [[ "${BUILDKITE_PULL_REQUEST:-false}" != "false" && -n "${BUILDKITE_PULL_REQUEST:-}" ]]
 }
 
-# base_ref: fetch the PR base branch explicitly and print the fetched ref.
-# Buildkite's checkout does not refresh the base branch by default, so an
-# existing origin/<base> may be stale or absent; never trust it. The branch
-# name is untrusted input: a strict class plus `git check-ref-format`, passed
-# as one argv element. A fetch failure fails closed (exit 2).
+# base_ref: fetch the pipeline's DEFAULT branch explicitly and print the
+# fetched ref. Never BUILDKITE_PULL_REQUEST_BASE_BRANCH: the PR author picks
+# the base, so it could name a branch that carries a weakened guard or config
+# (guard-content-policy.sh trusts the default branch the same way). Never an
+# existing origin/<branch> either: Buildkite's checkout does not refresh it, so
+# it may be stale or absent. The name is checked with a strict class plus
+# `git check-ref-format` and passed as one argv element. A missing or invalid
+# name, or a fetch failure, fails closed (exit 2).
 base_ref() {
-  local branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-}"
+  local branch="${BUILDKITE_PIPELINE_DEFAULT_BRANCH:-}"
   if [[ -z "$branch" ]]; then
-    echo "guard-gitleaks: PR build without BUILDKITE_PULL_REQUEST_BASE_BRANCH — failing closed" >&2
+    echo "guard-gitleaks: untrusted build without BUILDKITE_PIPELINE_DEFAULT_BRANCH — failing closed" >&2
     return 2
   fi
   if [[ ! "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] \
     || ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
-    echo "guard-gitleaks: BUILDKITE_PULL_REQUEST_BASE_BRANCH is not a valid branch name — failing closed" >&2
+    echo "guard-gitleaks: BUILDKITE_PIPELINE_DEFAULT_BRANCH is not a valid branch name — failing closed" >&2
     return 2
   fi
-  local ref="refs/guard-gitleaks/base"
+  local ref="refs/guard-gitleaks/trusted"
   git -c core.hooksPath=/dev/null fetch --quiet --no-tags origin -- "+refs/heads/${branch}:${ref}" >&2 \
-    || { echo "guard-gitleaks: cannot fetch base branch '${branch}' — failing closed" >&2; return 2; }
+    || { echo "guard-gitleaks: cannot fetch default branch '${branch}' — failing closed" >&2; return 2; }
   echo "$ref"
 }
 
-# trust_self: replace this PR-controlled script with the base-tip copy and
-# re-exec it. Caller must already be cd'd into the git repo. Never returns.
+# trust_self: replace this PR-controlled script with the default-branch-tip
+# copy and re-exec it. Caller must already be cd'd into the git repo. Never returns.
 # The trusted handoff travels on ARGV (--trusted-work), never the
 # environment: pipeline env is PR-influenced, so a GUARD_TRUSTED/GUARD_WORK
 # pair from env would let a caller skip trust AND steer the cleanup trap.
@@ -61,7 +65,7 @@ trust_self() {
   git rev-parse --verify --quiet "$base" >/dev/null 2>&1 \
     || { echo "guard-gitleaks: cannot resolve $base — failing closed" >&2; exit 2; }
   git cat-file -e "${base}:${SCRIPT_REL_PATH}" 2>/dev/null \
-    || { echo "guard-gitleaks: base $base has no guard script — failing closed" >&2; exit 2; }
+    || { echo "guard-gitleaks: default branch has no guard script — failing closed" >&2; exit 2; }
   git show "${base}:${SCRIPT_REL_PATH}" > "$WORK/trusted-guard-gitleaks.sh" \
     || { echo "guard-gitleaks: cannot extract trusted guard script — failing closed" >&2; exit 2; }
   # ${1+"$@"}: "$@" under set -u on old bash (macOS 3.2) errors with no args.
@@ -80,10 +84,10 @@ resolve_config() {
   git rev-parse --verify --quiet "$base" >/dev/null 2>&1 \
     || { echo "guard-gitleaks: cannot resolve $base — failing closed" >&2; return 2; }
   if git cat-file -e "${base}:.gitleaks.toml" 2>/dev/null; then
-    git show "${base}:.gitleaks.toml" > "$WORK/base.gitleaks.toml"
-    echo "$WORK/base.gitleaks.toml"
+    git show "${base}:.gitleaks.toml" > "$WORK/trusted.gitleaks.toml"
+    echo "$WORK/trusted.gitleaks.toml"
   else
-    echo "guard-gitleaks: WARNING no .gitleaks.toml at $base — scanning with gitleaks built-in default rules" >&2
+    echo "guard-gitleaks: WARNING no .gitleaks.toml on the default branch — scanning with gitleaks built-in default rules" >&2
     echo "DEFAULTS"
   fi
 }
