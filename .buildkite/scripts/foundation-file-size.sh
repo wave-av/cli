@@ -8,7 +8,11 @@ MAX=800
 fail=0
 while IFS= read -r f; do
   grep -qxF "$f" .github/.filesize-allowlist 2>/dev/null && continue   # justified exception
-  [ -L "$f" ] && continue   # skip symlinks: a symlink has no line count of its own, and wc -l would follow it (a link to /dev/zero reads until timeout)
+  # A symlink is refused, never skipped: compilers follow it, so skipping would let an
+  # oversized file through under a gated name. It is not followed either (a link to
+  # /dev/zero would read until timeout). Replace it with the file, or list it in
+  # .github/.filesize-allowlist with a reason.
+  if [ -L "$f" ]; then echo "$f is a symlink; the size gate refuses symlinked source files"; fail=1; continue; fi
   n=$(wc -l < "$f")
   if [ "$n" -gt "$MAX" ]; then echo "$f has $n lines (> $MAX)"; fail=1; fi
 done < <(git ls-files '*.ts' '*.tsx' '*.js' '*.py' | grep -vE '\.(types|d)\.ts$')
