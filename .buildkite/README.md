@@ -1,64 +1,56 @@
 # @wave-av/cli on Buildkite
 
-This directory runs the CLI's pull-request and push checks on Buildkite.
+This folder holds the CLI's Buildkite configuration. It uses the shared CI kit: the repository
+keeps its settings and its own step scripts, and the kit supplies the uploader, the renderer and
+the two leak guards.
+
+## How a build starts
+
+| file | what it is |
+|---|---|
+| `.buildkite/pipeline.yml` | The kit's thin uploader, byte-for-byte. Three copies of one upload step with different priorities; exactly one runs on any build. Do not edit it here. |
+| `.buildkite/wave-ci.sh` | The kit's fixed shim, mode 100755, identical in every repository that uses the kit. In a build it uses only the kit checkout the build host prepared for the pinned commit, checks that checkout, then renders, lints and uploads this repository's pipeline. |
+| `.buildkite/wave-ci.json` | This repository's settings: the kit commit (a full 40-character SHA, never a branch or tag), template `custom`, visibility `public`, default branch `main`, and the repository's own steps under `extra_steps`. Change the pipeline here. |
+| `.buildkite/scripts/upload.sh` | A temporary bridge. The pipeline's Steps setting, which lives in Buildkite and not in this repository, still runs this file. It uploads `pipeline.yml` unchanged. It goes away once the Steps setting holds the same YAML as `pipeline.yml` (see "Outside this repository"). |
 
 ## Steps
 
-The two leak guards run first. Each is followed by a `wait` barrier, so every other step starts only
-after both guards pass.
+The rendered pipeline starts with the two leak guards, `guard-gitleaks` and
+`guard-content-policy`. They are not in this repository. The renderer adds them to every
+pipeline it renders, and the build host runs them from its own pinned copy of the kit; it refuses
+a guard step whose command is anything other than the kit's own guard script. On a pull request
+the guard scripts come from the kit commit pinned on the base branch, not from the pull request.
 
-| step key | mirrors (GitHub workflow / job) | queue | credential |
+This repository's own steps, from `extra_steps`:
+
+| step key | mirrors (GitHub workflow / job) | timeout (min) | credential |
 |---|---|---|---|
-| `guard-gitleaks` | public-repo-guard.yml `gitleaks` steps (pinned gitleaks 8.30.1, checksum-verified) | `fpc-isolated` | none |
-| `guard-content-policy` | public-repo-guard.yml `content policy` step, without the private-repo rule; non-pull-request builds of any branch (other branches use the default branch's policy) | `fpc-isolated` | none |
-| `guard-content-policy-pr` | the same step on pull-request builds, without the private-repo rule | `fpc-isolated` | none |
-| `unit` | smoke-install.yml `unit` (type-check, build, unit tests) | `fpc-isolated` | none |
-| `smoke` | smoke-install.yml `smoke` (pack, fresh install, version and banner check) | `fpc-isolated` | none |
-| `license-truth` | license-truth.yml `local-truth` | `fpc-isolated` | none |
-| `foundation-secret-scan` | foundation-gate.yml → `_checks.yml` `checks`, secret-scan step | `fpc-isolated` | none |
-| `foundation-file-size` | foundation-gate.yml → `_checks.yml` `checks`, file-size gate (800 lines) | `fpc-isolated` | none |
-| `foundation-skill-validate` | foundation-gate.yml → `_checks.yml` `skill-validate` (no-op: no `SKILL.md`) | `fpc-isolated` | none |
-| `foundation-verify-routes` | foundation-gate.yml → `_checks.yml` `verify-routes` (no-op: no `wrangler.toml`) | `fpc-isolated` | none |
+| `unit` | smoke-install.yml `unit` (type-check, build, unit tests) | 10 | none |
+| `smoke` | smoke-install.yml `smoke` (pack, fresh install, version and banner check) | 15 | none |
+| `license-truth` | license-truth.yml `local-truth` | 10 | none |
+| `foundation-secret-scan` | foundation-gate.yml, `_checks.yml` `checks`, secret-scan step | 10 | none |
+| `foundation-file-size` | foundation-gate.yml, `_checks.yml` `checks`, file-size gate (800 lines) | 10 | none |
+| `foundation-skill-validate` | foundation-gate.yml, `_checks.yml` `skill-validate` (no-op: no `SKILL.md`) | 5 | none |
+| `foundation-verify-routes` | foundation-gate.yml, `_checks.yml` `verify-routes` (no-op: no `wrangler.toml`) | 5 | none |
 
-Each step's `command` is a single checked-in script with no arguments, because the build agents run
-with `no-command-eval`. The pipeline uses no plugins and has no secret values in `env`. The only
-`env` a step sets is the non-secret `WAVE_JOB_GUARD_PR=1` on `guard-content-policy-pr`.
+Each step's command is one checked-in script with no arguments, because the build agents run
+with `no-command-eval`. These steps do not wait on the guards, so on a first pull request they
+still run while the guards are refused (see below). Automatic retry is once on a lost agent and
+once on an agent stop, as the kit renders it.
 
-`.buildkite/scripts/upload.sh` refuses (exit 2) to upload a `pipeline.yml` that lacks
-`guard-gitleaks`, `guard-content-policy` or `guard-content-policy-pr`.
+## The first pull request is red on the guards by design
 
-## The leak guards
+On a pull request the guard scripts come from the kit commit pinned on the base branch. Until
+`.buildkite/wave-ci.json` is on `main`, the base branch has no pin, so both guard steps are
+refused with a message that the base branch has no trusted guard pin. The other steps still run.
+After this change merges, the first `main` build runs the guards from the pin, and later pull
+requests take them from that base pin.
 
-- **gitleaks.** On a pull-request build the PR's copy of `guard-gitleaks.sh` re-executes the
-  default branch's copy, and the scan uses the default branch's `.gitleaks.toml`. The trusted copy
-  always comes from the pipeline's default branch, never from the base the pull request targets
-  (the author picks that), and it is fetched explicitly on every such build (Buildkite's checkout
-  does not refresh it), so a stale or absent remote-tracking ref is never trusted. A missing or
-  invalid default branch name, a fetch failure, or a default branch without the guard script fails
-  closed (exit 2). The scan reads none of the tree's own escape hatches: it runs on a copy with
-  every `.gitleaksignore` and `.gitleaks.toml` removed, with the default branch's config passed
-  explicitly, `--ignore-gitleaks-allow`, and an empty ignore file. Those removals cover escape files
-  and markers a change adds to the scanned tree. The same trusted path covers every build except
-  one: a non-pull-request, untagged build of the default branch whose commit is an ancestor of
-  the freshly fetched default branch. A push to another branch, a tagged build, and a build that
-  names the default branch but checks out a commit not on it all take the trusted path. The first
-  pull request that adds this guard therefore fails `guard-gitleaks` by design; it passes once
-  the guard is on the default branch.
-- **content policy.** Runs the vendored `scripts/public-repo-guard/content-policy.sh` with the same
-  public-safe rule set on every build: every rule except private-repo. The private-repo rule needs
-  a confidential list, and this public repository's builds never receive one, by design. If any
-  form of that list is present in a job, the step fails closed (exit 2). Only a non-pull-request,
-  untagged build of the default branch whose commit is an ancestor of the freshly fetched default
-  branch runs this checkout's policy. Every other build takes the trusted runner. That includes a pull request (`guard-content-policy-pr`), and a push to any other
-  branch, which may be a same-repository pull request's only build (`guard-content-policy`). The
-  trusted runner uses the default branch's policy and `.guardignore` against a copy of the tree.
-  It neutralizes `# guard:allow` markers in file content and ignores the copy's `.ignore`,
-  `.rgignore` and `.gitignore` files. A marker in a file or directory name cannot be neutralized
-  that way (the vendored policy filters markers out of the whole `path:line:content` record), so
-  any path in the copy that contains `guard:allow` fails the step closed (exit 2). This is decided
-  in the script, not by a host setting. A pull request from a fork is refused (exit 2).
-  Known gap, tracked separately: the vendored policy runs `rg` without `-a`, so a NUL byte makes
-  `rg` treat a file as binary and skip it.
+At the pinned kit commit, the content-policy guard on a `main` build is rendered as a step that
+expects a host-side value that public repositories do not receive. A kit change that adds a
+secret-free public mode for that step is in review. Until this repository's pin includes it, that
+step on `main` is expected to fail closed. The pin moves forward in a separate change after the
+kit change merges; no host-side grant is added for this public repository.
 
 ## Differences from the GitHub workflows
 
@@ -68,67 +60,53 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   not part of this pipeline.
 - **Not included:** the scheduled `registry-drift` job, the release workflows, and the bots that
   GitHub triggers on events (issue triage, PR-body checks).
-- **Content policy without the private-repo rule, on every build.** GitHub ran the private-repo rule
-  with an org-level list. This public repository's Buildkite builds never receive that list, by
-  design, so the rule does not run here at all. A private name is not caught by this pipeline;
-  the other content-policy rules, gitleaks and the foundation secret scan still run.
+- **Content policy without the private-repo rule.** That rule needs a confidential list, and this
+  public repository's builds never receive one. A private name is not caught by this pipeline; the
+  other content-policy rules, gitleaks and the foundation secret scan still run.
 - **Secret-scan exemptions match content only.** `foundation-secret-scan` runs `grep -h`, so the
   `pragma: allowlist secret` marker and `.github/.secret-allowlist` phrases are matched against
-  the line's content, never its file or directory name. The workflow filtered the whole
+  the line's content, never its file or folder name. The workflow filtered the whole
   `path:line:content` record.
-- **File-size gate refuses symlinks.** `foundation-file-size` fails on a tracked source file that
-  is a symlink, so a link to an oversized or out-of-tree file cannot skip the line count.
+- **File-size gate refuses symlinks and counts every line.** `foundation-file-size` fails on a
+  tracked source file that is a symlink, and counts a final line that has no trailing newline.
+- **Route check reads wildcard routes.** `foundation-verify-routes` also extracts a route whose
+  host starts with `*` (for example `*-edge.<zone>/*`), and checks it without the `*`.
+- **Skill check finds indented duplicate keys.** `foundation-skill-validate` finds duplicate
+  frontmatter keys on the parsed YAML, at any indentation, instead of a column-zero line scan.
 - **No `governance-enforce`.** See "Not in this pipeline" below.
-- **Not mirrored yet:** the content-policy fixture self-test step of `public-repo-guard.yml`, and
-  `public-repo-guard-body.yml` (the pull-request body scan). Both block retiring
-  `public-repo-guard.yml`.
+
 ## Not in this pipeline
 
 - **`governance-enforce`** (governance-enforce.yml `enforce`, secrets and hardcoded paths on the
-  diff). Its enforcer, `@wave-av/governance`, is a private package. The self-hosted registry it
-  lives on refuses anonymous reads, and the CI host gives this public repository no token, by
-  standing decision. So no build of this pipeline can install it, and a step for it could only fail
-  closed. It is left out of the step list rather than left red. `.buildkite/scripts/governance-enforce.sh`
-  stays in the repository for local and manual runs. The old GitHub Actions copy has not run for
-  months, so no running coverage is lost. On Buildkite, diffs are still covered by
-  `guard-gitleaks`, the content policy and `foundation-secret-scan`; hardcoded developer paths are
-  covered by the content policy's `abs-user-path` rule.
+  diff). Its enforcer is a private package that cannot be installed without a registry token, and
+  this public repository's builds get no token, by standing decision. A step for it could only
+  fail closed, so it is left out rather than left red. `.buildkite/scripts/governance-enforce.sh`
+  stays in the repository for local and manual runs. On Buildkite, diffs are still covered by the
+  two leak guards and `foundation-secret-scan`.
 
 ## Credentials
 
-None. No step in this pipeline receives a secret on any build, and none is in this repository or
-in the pipeline file. The content-policy steps fail closed if the private-repo list
-(`GUARD_PRIVATE_REPOS`, `GUARD_PRIVATE_REPOS_01`..`_06`) is present in a job.
+None. No step of this repository receives a secret on any build, and none is in this repository
+or in the pipeline file.
 
-## Host-side setup
+## Outside this repository
 
-The CI host injects secrets only into jobs it trusts, and it reads each job's identity from the
-Buildkite API, never from the job. A pull request controls `pipeline.yml` and every script here,
-so nothing in this repository can be a secrets boundary. That is why this pipeline is written to
-need no secret at all. The host's allowlist has no entry for this public repository, by standing
-decision.
-
-Outside `pipeline.yml`:
-
-- A Buildkite pipeline for this repository whose only settings step runs
-  `.buildkite/scripts/upload.sh`, with pull-request builds and commit statuses on.
+- **Steps setting.** The Buildkite pipeline's Steps setting must hold the same YAML as
+  `.buildkite/pipeline.yml`. Until it does, it runs `.buildkite/scripts/upload.sh`, which uploads
+  that same file, so builds work either way. Delete `upload.sh` only after the swap.
+- **Pull-request builds** on, **builds of pull requests from forks** off, and commit statuses on.
 - A repository webhook for `push` and `pull_request` events that points at that pipeline.
-- **Build pull requests from forks** off.
 
 ## Build-image prerequisites
 
-Node 22 with npm, `bash`, `git`, `grep`, `sed`, `find`, `curl`, `sha256sum`, `tar`, ripgrep (`rg`)
-built with PCRE2 (`rg --pcre2-version` must succeed; the content policy uses `rg -P` and fails
-closed without it), and `python3` with PyYAML (`python3 -c 'import yaml'` must succeed;
-`foundation-skill-validate` needs it once the repo has a `SKILL.md` and never installs it at run
-time). Network access to `registry.npmjs.org`, `github.com` (git fetches and the gitleaks
-release URL) and `release-assets.githubusercontent.com` (where GitHub redirects the gitleaks
-release download).
+Node 22 with npm, `bash`, `git`, `grep`, `sed`, `awk`, `find`, and `python3` with PyYAML
+(`python3 -c 'import yaml'` must succeed; `foundation-skill-validate` needs it once the repository
+has a `SKILL.md` and never installs it at run time). Network access to the public npm registry.
 
 ## Run locally
 
 ```sh
-shellcheck -x .buildkite/scripts/*.sh .buildkite/scripts/lib/*.sh
+shellcheck -x .buildkite/scripts/*.sh .buildkite/scripts/lib/*.sh .buildkite/tests/*.sh
 .buildkite/scripts/unit.sh
 .buildkite/scripts/smoke.sh
 .buildkite/scripts/license-truth.sh
@@ -136,12 +114,11 @@ shellcheck -x .buildkite/scripts/*.sh .buildkite/scripts/lib/*.sh
 .buildkite/scripts/foundation-file-size.sh
 .buildkite/scripts/foundation-skill-validate.sh
 .buildkite/scripts/foundation-verify-routes.sh
-bash scripts/public-repo-guard/content-policy.sh .
-bash .buildkite/tests/guards.test.sh
+bash .buildkite/tests/foundation.test.sh
 ```
 
-`guards.test.sh` builds throwaway repositories under a temp dir (a local bare origin, a gitleaks
-shim, a ripgrep shim without PCRE2) and checks the guards' trust rule, trusted handoff, fail-closed
-checks, scan-copy cleaning, allow markers in content and in path names, the secret scan's
-content-only exemptions and the file-size symlink refusal. It needs no network and no credential.
-Pass an older checkout's root as the first argument to run the same cases against that code.
+`foundation.test.sh` builds throwaway repositories under a temp folder and checks the secret
+scan's content-only exemptions, the file-size gate (symlinks, an unterminated last line), the route
+check on wildcard routes, the skill check on indented duplicate keys, and the upload bridge's
+refusals. It needs no network and no credential. Pass an older checkout's root as the first
+argument to run the same cases against that code.
