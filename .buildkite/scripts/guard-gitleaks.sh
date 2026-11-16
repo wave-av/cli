@@ -10,8 +10,9 @@
 # main() first re-execs the base-branch-tip copy of THIS script (a PR that rewrites the
 # guard just re-installs the trusted copy), then scans the PR worktree with the base-tip
 # .gitleaks.toml. A base tip without a config scans with gitleaks' built-in default rules
-# plus a loud warning. An unresolvable base, a missing base script, or a missing
-# base-branch name all fail closed (exit 2). Default-branch builds run directly with the
+# plus a loud warning. The base branch is always fetched explicitly (never a possibly
+# stale or absent origin/<base>). A base branch that cannot be fetched, a missing base
+# script, or a missing or invalid base-branch name all fail closed (exit 2). Default-branch builds run directly with the
 # worktree config (HEAD is trusted there). GITLEAKS_BIN, when set, skips the download
 # (test seam; CI never sets it).
 #
@@ -27,13 +28,26 @@ is_pr_build() {
   [[ "${BUILDKITE_PULL_REQUEST:-false}" != "false" && -n "${BUILDKITE_PULL_REQUEST:-}" ]]
 }
 
+# base_ref: fetch the PR base branch explicitly and print the fetched ref.
+# Buildkite's checkout does not refresh the base branch by default, so an
+# existing origin/<base> may be stale or absent; never trust it. The branch
+# name is untrusted input: a strict class plus `git check-ref-format`, passed
+# as one argv element. A fetch failure fails closed (exit 2).
 base_ref() {
   local branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-}"
   if [[ -z "$branch" ]]; then
     echo "guard-gitleaks: PR build without BUILDKITE_PULL_REQUEST_BASE_BRANCH — failing closed" >&2
     return 2
   fi
-  echo "origin/${branch}"
+  if [[ ! "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] \
+    || ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
+    echo "guard-gitleaks: BUILDKITE_PULL_REQUEST_BASE_BRANCH is not a valid branch name — failing closed" >&2
+    return 2
+  fi
+  local ref="refs/guard-gitleaks/base"
+  git -c core.hooksPath=/dev/null fetch --quiet --no-tags origin -- "+refs/heads/${branch}:${ref}" >&2 \
+    || { echo "guard-gitleaks: cannot fetch base branch '${branch}' — failing closed" >&2; return 2; }
+  echo "$ref"
 }
 
 # trust_self: replace this PR-controlled script with the base-tip copy and

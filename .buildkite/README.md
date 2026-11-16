@@ -31,8 +31,10 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
 ## The leak guards
 
 - **gitleaks.** On a pull-request build the PR's copy of `guard-gitleaks.sh` re-executes the
-  base branch's copy, and the scan uses the base branch's `.gitleaks.toml`. A missing base branch
-  name, an unresolvable base, or a base without the guard script fails closed (exit 2). The first
+  base branch's copy, and the scan uses the base branch's `.gitleaks.toml`. The base branch is
+  fetched explicitly on every pull-request build (Buildkite's checkout does not refresh it), so a
+  stale or absent remote-tracking ref is never trusted. A missing or invalid base branch name, a
+  base that cannot be fetched, or a base without the guard script fails closed (exit 2). The first
   pull request that adds this guard therefore fails `guard-gitleaks` by design; it passes once the
   guard is on the default branch.
 - **content policy.** Runs the vendored `scripts/public-repo-guard/content-policy.sh`. Builds that
