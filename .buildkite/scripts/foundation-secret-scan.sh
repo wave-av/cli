@@ -11,16 +11,21 @@
 #   * pipeline exit statuses are captured: grep 0/1 continue, anything else
 #     fails closed (no `|| true` masking scan errors as clean);
 #   * the allowlist filter is an if/else, so a failing allowlist grep cannot
-#     fall through to `cat` and hide its own error.
+#     fall through to `cat` and hide its own error;
+#   * both exemptions (the pragma marker and .github/.secret-allowlist) match the
+#     matched line's CONTENT only: the scan runs with -h and without -n, so no
+#     path:line: prefix is in the record. A marker or allowlist phrase in a FILE
+#     OR DIRECTORY NAME can therefore never exempt a hit. The workflow filtered
+#     the whole path:line:content record. Nothing is printed either way.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 # Real-secret patterns. Lines tagged "pragma: allowlist secret" (e.g. test fixtures / regex
 # definitions) are skipped; that is how a vetting module can define key shapes without tripping.
-SCAN_TMP="$(mktemp)"
+SCAN_TMP="$(mktemp "${TMPDIR:-/tmp}/secret-scan.XXXXXXXX")"
 trap 'rm -f "$SCAN_TMP"' EXIT
 set +e
-grep -rIEn '(sk-[A-Za-z0-9]{20}|sk_(live|test)_[A-Za-z0-9]{20}|npm_[A-Za-z0-9]{30}|sbp_[a-f0-9]{40}|github_pat_[A-Za-z0-9_]{40}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30}|AIzaSy[A-Za-z0-9_-]{20}|xai-[A-Za-z0-9]{40}|xoxb-[A-Za-z0-9-]+|-----BEGIN [A-Z ]*PRIVATE KEY)' \
+grep -rIEh '(sk-[A-Za-z0-9]{20}|sk_(live|test)_[A-Za-z0-9]{20}|npm_[A-Za-z0-9]{30}|sbp_[a-f0-9]{40}|github_pat_[A-Za-z0-9_]{40}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30}|AIzaSy[A-Za-z0-9_-]{20}|xai-[A-Za-z0-9]{40}|xoxb-[A-Za-z0-9-]+|-----BEGIN [A-Z ]*PRIVATE KEY)' \
   --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist . \
   | grep -v 'pragma: allowlist secret' \
   | { if [ -f .github/.secret-allowlist ]; then grep -vFf .github/.secret-allowlist; else cat; fi; } >"$SCAN_TMP"
