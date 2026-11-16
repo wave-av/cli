@@ -8,9 +8,13 @@
 #
 # Fork trust: on PR builds nothing executes from the PR checkout except as scan source.
 # main() first re-execs the default-branch-tip copy of THIS script (a PR that rewrites
-# the guard just re-installs the trusted copy), then scans the PR worktree with the
-# default-branch .gitleaks.toml. A default branch without a config scans with gitleaks'
-# built-in default rules plus a loud warning. The default branch is always fetched
+# the guard just re-installs the trusted copy), then scans a COPY of the PR tree with
+# the default-branch .gitleaks.toml passed explicitly. The copy has every in-tree
+# .gitleaksignore and .gitleaks.toml removed, the scan ignores gitleaks:allow, and its
+# ignore path is an empty file (see scan_untrusted_copy). When the default branch has
+# no config, the scan uses gitleaks' built-in default config (the copy has no config
+# of its own and the config environment variables are unset), with a loud warning.
+# The default branch is always fetched
 # explicitly (never the PR's chosen base, never a possibly stale origin/<branch>). A
 # default branch that cannot be fetched, a missing trusted script, or a missing or
 # invalid default-branch name all fail closed (exit 2). The same trusted path covers
@@ -155,11 +159,47 @@ main() {
   fi
   local config
   config="$(resolve_config)" || exit 2
-  if [[ "$config" == "DEFAULTS" ]]; then
-    "$bin" detect --no-git --source . --redact --no-banner --exit-code 1
-  else
-    "$bin" detect --no-git --source . --config "$config" --redact --no-banner --exit-code 1
+  if ! needs_trust; then
+    if [[ "$config" == "DEFAULTS" ]]; then
+      "$bin" detect --no-git --source . --redact --no-banner --exit-code 1
+    else
+      "$bin" detect --no-git --source . --config "$config" --redact --no-banner --exit-code 1
+    fi
+    return
   fi
+  scan_untrusted_copy "$bin" "$config"
+}
+
+# scan_untrusted_copy BIN CONFIG: the trusted-path scan. gitleaks v8.30.1 reads
+# three escape hatches from the scanned tree and its cwd: every .gitleaksignore
+# at --gitleaks-ignore-path (default ".") and at the source root (cmd/root.go
+# 300-321), any line containing gitleaks:allow (detect/detect.go 28, 510-513),
+# and, with no --config, the source's own .gitleaks.toml (cmd/root.go 279-282,
+# initConfig). All three are author content on this path. So: scan a copy of the
+# checkout with every .gitleaksignore and .gitleaks.toml removed (any depth,
+# files or links), from inside that copy (a cwd with no ignore file), pass the
+# trusted config explicitly, ignore gitleaks:allow, and point the ignore path at
+# an empty file. The config environment variables are unset for the run, so with
+# no trusted config the scan uses gitleaks' built-in default config.
+scan_untrusted_copy() {
+  local bin="$1" config="$2" tree="$WORK/tree"
+  mkdir "$tree" || { echo "guard-gitleaks: cannot create the scan copy — failing closed" >&2; exit 2; }
+  tar -C . --exclude=./.git -cf - . | tar -C "$tree" -xf - \
+    || { echo "guard-gitleaks: cannot copy the tree to scan — failing closed" >&2; exit 2; }
+  find "$tree" \( -name .gitleaksignore -o -name .gitleaks.toml \) \( -type f -o -type l \) -delete \
+    || { echo "guard-gitleaks: cannot remove in-tree gitleaks ignore/config files — failing closed" >&2; exit 2; }
+  if [[ -n "$(find "$tree" \( -name .gitleaksignore -o -name .gitleaks.toml \) -print -quit)" ]]; then
+    echo "guard-gitleaks: an in-tree .gitleaksignore or .gitleaks.toml survived in the scan copy — failing closed" >&2
+    exit 2
+  fi
+  : > "$WORK/empty.gitleaksignore"
+  local args=(detect --no-git --source . --ignore-gitleaks-allow
+    --gitleaks-ignore-path "$WORK/empty.gitleaksignore" --redact --no-banner --exit-code 1)
+  if [[ "$config" != "DEFAULTS" ]]; then
+    args+=(--config "$config")
+  fi
+  echo "guard-gitleaks: scanning a copy of the tree with the default branch's config; in-tree .gitleaksignore, .gitleaks.toml and gitleaks:allow are ignored" >&2
+  (cd "$tree" && env -u GITLEAKS_CONFIG -u GITLEAKS_CONFIG_TOML "$bin" "${args[@]}")
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

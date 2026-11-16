@@ -35,7 +35,10 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   (the author picks that), and it is fetched explicitly on every such build (Buildkite's checkout
   does not refresh it), so a stale or absent remote-tracking ref is never trusted. A missing or
   invalid default branch name, a fetch failure, or a default branch without the guard script fails
-  closed (exit 2). The first pull request that adds this guard therefore fails `guard-gitleaks` by
+  closed (exit 2). The scan reads none of the tree's own escape hatches: it runs on a copy with
+  every `.gitleaksignore` and `.gitleaks.toml` removed, with the default branch's config passed
+  explicitly, `--ignore-gitleaks-allow`, and an empty ignore file. The same trusted path covers
+  pushes to any branch other than the default branch. The first pull request that adds this guard therefore fails `guard-gitleaks` by
   design; it passes once the guard is on the default branch.
 - **content policy.** Runs the vendored `scripts/public-repo-guard/content-policy.sh` with the same
   public-safe rule set on every build: every rule except private-repo. The private-repo rule needs
