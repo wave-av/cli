@@ -181,6 +181,13 @@ _guard_run_trusted_pr() {
   if [ -n "$(find "$_guard_work/tree" \( -name .ignore -o -name .rgignore -o -name .gitignore \) -print -quit)" ]; then
     _guard_fail "a pull-request ignore file survived in the tree copy"
   fi
+  # The policy filters allow markers out of the whole path:line:content record,
+  # so a marker in a FILE OR DIRECTORY NAME would exempt every hit under it.
+  # Content markers are neutralized below; a marker in a path cannot be, so any
+  # such path fails closed.
+  if [ -n "$(cd "$_guard_work/tree" && find . -path '*guard:allow*' -print -quit)" ]; then
+    _guard_fail "a file or directory name in the tree contains 'guard:allow' (a marker in a path would exempt every hit under it)"
+  fi
   if git cat-file -e "$ref:.guardignore" 2>/dev/null; then
     git show "$ref:.guardignore" > "$_guard_work/tree/.guardignore" \
       || _guard_fail "cannot extract the default-branch .guardignore"
