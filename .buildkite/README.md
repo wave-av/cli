@@ -37,20 +37,28 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   invalid default branch name, a fetch failure, or a default branch without the guard script fails
   closed (exit 2). The scan reads none of the tree's own escape hatches: it runs on a copy with
   every `.gitleaksignore` and `.gitleaks.toml` removed, with the default branch's config passed
-  explicitly, `--ignore-gitleaks-allow`, and an empty ignore file. The same trusted path covers
-  pushes to any branch other than the default branch. The first pull request that adds this guard therefore fails `guard-gitleaks` by
-  design; it passes once the guard is on the default branch.
+  explicitly, `--ignore-gitleaks-allow`, and an empty ignore file. Those removals cover escape files
+  and markers a change adds to the scanned tree. The same trusted path covers every build except
+  one: a non-pull-request, untagged build of the default branch whose commit is an ancestor of
+  the freshly fetched default branch. A push to another branch, a tagged build, and a build that
+  names the default branch but checks out a commit not on it all take the trusted path. The first
+  pull request that adds this guard therefore fails `guard-gitleaks` by design; it passes once
+  the guard is on the default branch.
 - **content policy.** Runs the vendored `scripts/public-repo-guard/content-policy.sh` with the same
   public-safe rule set on every build: every rule except private-repo. The private-repo rule needs
   a confidential list, and this public repository's builds never receive one, by design. If any
-  form of that list is present in a job, the step fails closed (exit 2). Only a non-pull-request
-  build of the default branch runs this checkout's policy. Every other build takes the trusted
-  runner. That includes a pull request (`guard-content-policy-pr`), and a push to any other
+  form of that list is present in a job, the step fails closed (exit 2). Only a non-pull-request,
+  untagged build of the default branch whose commit is an ancestor of the freshly fetched default
+  branch runs this checkout's policy. Every other build takes the trusted runner. That includes a pull request (`guard-content-policy-pr`), and a push to any other
   branch, which may be a same-repository pull request's only build (`guard-content-policy`). The
   trusted runner uses the default branch's policy and `.guardignore` against a copy of the tree.
-  It ignores inline `# guard:allow` markers and the copy's `.ignore`, `.rgignore` and `.gitignore`
-  files. This is decided in the script, not by a host setting. A pull request from a fork is
-  refused (exit 2).
+  It neutralizes `# guard:allow` markers in file content and ignores the copy's `.ignore`,
+  `.rgignore` and `.gitignore` files. A marker in a file or directory name cannot be neutralized
+  that way (the vendored policy filters markers out of the whole `path:line:content` record), so
+  any path in the copy that contains `guard:allow` fails the step closed (exit 2). This is decided
+  in the script, not by a host setting. A pull request from a fork is refused (exit 2).
+  Known gap, tracked separately: the vendored policy runs `rg` without `-a`, so a NUL byte makes
+  `rg` treat a file as binary and skip it.
 
 ## Differences from the GitHub workflows
 
@@ -64,6 +72,12 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   with an org-level list. This public repository's Buildkite builds never receive that list, by
   design, so the rule does not run here at all. A private name is not caught by this pipeline;
   the other content-policy rules, gitleaks and the foundation secret scan still run.
+- **Secret-scan exemptions match content only.** `foundation-secret-scan` runs `grep -h`, so the
+  `pragma: allowlist secret` marker and `.github/.secret-allowlist` phrases are matched against
+  the line's content, never its file or directory name. The workflow filtered the whole
+  `path:line:content` record.
+- **File-size gate refuses symlinks.** `foundation-file-size` fails on a tracked source file that
+  is a symlink, so a link to an oversized or out-of-tree file cannot skip the line count.
 - **No `governance-enforce`.** See "Not in this pipeline" below.
 - **Not mirrored yet:** the content-policy fixture self-test step of `public-repo-guard.yml`, and
   `public-repo-guard-body.yml` (the pull-request body scan). Both block retiring
@@ -123,4 +137,11 @@ shellcheck -x .buildkite/scripts/*.sh .buildkite/scripts/lib/*.sh
 .buildkite/scripts/foundation-skill-validate.sh
 .buildkite/scripts/foundation-verify-routes.sh
 bash scripts/public-repo-guard/content-policy.sh .
+bash .buildkite/tests/guards.test.sh
 ```
+
+`guards.test.sh` builds throwaway repositories under a temp dir (a local bare origin, a gitleaks
+shim, a ripgrep shim without PCRE2) and checks the guards' trust rule, trusted handoff, fail-closed
+checks, scan-copy cleaning, allow markers in content and in path names, the secret scan's
+content-only exemptions and the file-size symlink refusal. It needs no network and no credential.
+Pass an older checkout's root as the first argument to run the same cases against that code.
