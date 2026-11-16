@@ -13,9 +13,12 @@
 # built-in default rules plus a loud warning. The default branch is always fetched
 # explicitly (never the PR's chosen base, never a possibly stale origin/<branch>). A
 # default branch that cannot be fetched, a missing trusted script, or a missing or
-# invalid default-branch name all fail closed (exit 2). Default-branch builds run directly with the
-# worktree config (HEAD is trusted there). GITLEAKS_BIN, when set, skips the download
-# (test seam; CI never sets it).
+# invalid default-branch name all fail closed (exit 2). The same trusted path covers
+# push builds of any branch other than the default branch: that code is as
+# author-controlled as a PR. Only a non-PR Buildkite build of the default branch, or a
+# local run outside Buildkite, scans directly with the worktree config.
+# GITLEAKS_BIN, when set, skips the download. It is a local test seam only: under
+# Buildkite (BUILDKITE set) it is refused, so job env cannot swap the scanner.
 #
 # Bootstrap: until this file is on the default branch, a PR build fails closed here
 # ("default branch has no guard script"). That is intended: the guard never trusts PR content.
@@ -27,6 +30,19 @@ SCRIPT_REL_PATH=".buildkite/scripts/guard-gitleaks.sh"
 
 is_pr_build() {
   [[ "${BUILDKITE_PULL_REQUEST:-false}" != "false" && -n "${BUILDKITE_PULL_REQUEST:-}" ]]
+}
+
+# needs_trust: true unless this is a local run (BUILDKITE unset) or a non-PR
+# Buildkite build of the pipeline's default branch. A missing branch or default
+# branch counts as untrusted, and the trusted path then fails closed.
+needs_trust() {
+  if [[ -z "${BUILDKITE:-}" ]]; then
+    is_pr_build
+    return
+  fi
+  is_pr_build && return 0
+  [[ -z "${BUILDKITE_BRANCH:-}" || -z "${BUILDKITE_PIPELINE_DEFAULT_BRANCH:-}" ]] && return 0
+  [[ "$BUILDKITE_BRANCH" != "$BUILDKITE_PIPELINE_DEFAULT_BRANCH" ]]
 }
 
 # base_ref: fetch the pipeline's DEFAULT branch explicitly and print the
@@ -73,9 +89,10 @@ trust_self() {
 }
 
 # resolve_config: print the config path, or DEFAULTS for built-in rules.
-# Uses $WORK (caller sets it). Never prints a PR-controlled path on PR builds.
+# Uses $WORK (caller sets it). Never prints an author-controlled path on an
+# untrusted build (see needs_trust).
 resolve_config() {
-  if ! is_pr_build; then
+  if ! needs_trust; then
     echo ".gitleaks.toml"
     return 0
   fi
@@ -116,11 +133,15 @@ main() {
     WORK="$(mktemp -d)"
   fi
   trap 'rm -rf "$WORK"' EXIT
-  if [[ "$trusted" != "1" ]] && is_pr_build; then
+  if [[ "$trusted" != "1" ]] && needs_trust; then
     trust_self ${1+"$@"}
   fi
   local bin
   if [[ -n "${GITLEAKS_BIN:-}" ]]; then
+    if [[ -n "${BUILDKITE:-}" ]]; then
+      echo "guard-gitleaks: GITLEAKS_BIN is a local test seam and is refused under Buildkite — failing closed" >&2
+      exit 2
+    fi
     bin="$GITLEAKS_BIN"
   else
     cd "$WORK"
