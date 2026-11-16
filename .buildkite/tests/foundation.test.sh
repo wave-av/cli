@@ -13,8 +13,8 @@
 # The two leak guards are not tested here: they are not in this repository. The shared CI kit
 # injects them into the rendered pipeline and the build host runs them from its own pinned copy.
 #
-# Covers: the secret scan's content-only exemptions, its scan of UTF-16 files and its handling of
-# blank allowlist lines; the file-size gate's symlink refusal and its count of an unterminated final
+# Covers: the secret scan's content-only exemptions, its scan of UTF-16 files, its handling of
+# blank allowlist lines, CR line endings and nested dist folders; the file-size gate's symlink refusal and its count of an unterminated final
 # line; verify-routes on wildcard-prefixed routes; skill-validate's duplicate-key check on indented
 # frontmatter; and the upload bridge's byte comparison with the kit uploader.
 set -uo pipefail
@@ -113,10 +113,21 @@ ss_tree; enc "k = $KEY # pragma: allowlist secret"$'\n' utf-16-le fffe > "$S/a.t
 ss_case "secret scan: the pragma still exempts a UTF-16 key line" 0
 ss_tree; printf 'k = %s\n' "$KEY" > "$S/a.txt"; printf 'fixture-ok\n\n' > "$S/.github/.secret-allowlist"
 ss_case "secret scan: a blank allowlist line does not exempt every hit" 1
-ss_tree; printf 'k = %s\n' "$KEY" > "$S/a.txt"; printf ' \t\n' > "$S/.github/.secret-allowlist"
+# A single space is a phrase the old filter matched in "k = <key>", so it exempted the hit.
+ss_tree; printf 'k = %s\n' "$KEY" > "$S/a.txt"; printf ' \n' > "$S/.github/.secret-allowlist"
 ss_case "secret scan: a whitespace-only allowlist line does not exempt every hit" 1
 ss_tree; printf 'k = %s fixture-ok\n' "$KEY" > "$S/a.txt"; printf '\nfixture-ok\n\n' > "$S/.github/.secret-allowlist"
 ss_case "secret scan: a phrase next to blank allowlist lines still exempts its line" 0
+# CR-only line endings: without splitting on CR the whole file is one line, so a pragma on any line
+# would exempt a key on another.
+ss_tree; printf 'k = %s\rnote # pragma: allowlist secret\r' "$KEY" > "$S/a.txt"
+ss_case "secret scan: a pragma on another CR-ended line does not exempt a key" 1
+ss_tree; printf 'k = %s # pragma: allowlist secret\r\n' "$KEY" > "$S/a.txt"
+ss_case "secret scan: the pragma still exempts its own CRLF-ended line" 0
+ss_tree; mkdir -p "$S/src/dist"; printf 'k = %s\n' "$KEY" > "$S/src/dist/x.ts"
+ss_case "secret scan: a nested dist folder is scanned" 1
+ss_tree; mkdir -p "$S/dist" "$S/node_modules/p"; printf 'k = %s\n' "$KEY" > "$S/dist/x.js"; printf 'k = %s\n' "$KEY" > "$S/node_modules/p/x.js"
+ss_case "secret scan: the top-level dist and node_modules folders are skipped" 0
 
 # --- foundation-file-size: symlinks refused, unterminated last line counted ------------------------
 FS=foundation-file-size.sh

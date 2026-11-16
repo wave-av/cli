@@ -78,6 +78,16 @@ declare no secret at this pin.
   before the match, so a key in a UTF-16 file (with or without a byte-order mark) is caught.
 - **Blank allowlist lines are ignored.** An empty phrase would match every line and so exempt every
   hit; blank and whitespace-only lines of `.github/.secret-allowlist` are dropped first.
+- **The pull request controls both exemptions.** The `pragma: allowlist secret` marker and
+  `.github/.secret-allowlist` are read from the tree being built, as the workflow read them. A pull
+  request can add a marker, or a one-character phrase that exempts most hits. Ignoring blank lines
+  stops an accident, not an attacker. The control a pull request cannot edit is the kit's gitleaks
+  guard, which runs from the host's pinned copy.
+- **A carriage return ends a line.** The scan splits on CR as well as LF, in files and in the
+  allowlist. A file with CR-only line endings would otherwise read as one line, and a marker on any
+  line would exempt a key on another.
+- **Only the top-level `dist` and `node_modules` are skipped.** The workflow skipped those names at
+  any depth, so a committed `src/dist/x.ts` was never scanned.
 - **File-size gate refuses symlinks and counts every line.** `foundation-file-size` fails on a
   tracked source file that is a symlink, and counts a final line that has no trailing newline.
 - **Route check reads wildcard routes.** `foundation-verify-routes` also extracts a route whose
@@ -134,6 +144,6 @@ bash .buildkite/tests/foundation.test.sh
 `foundation.test.sh` builds throwaway repositories under a temp folder and checks the secret
 scan's content-only exemptions, the file-size gate (symlinks, an unterminated last line), the route
 check on wildcard routes, the skill check on indented duplicate keys, the secret scan on UTF-16
-files and blank allowlist lines, and the upload bridge's byte comparison with the kit uploader. It
+files, blank allowlist lines, CR line endings and nested `dist` folders, and the upload bridge's byte comparison with the kit uploader. It
 needs no network and no credential. Pass an older checkout's root as the first argument to run the
 same cases against that code.

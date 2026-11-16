@@ -24,7 +24,15 @@
 #     plain text and its keys are caught;
 #   * blank and whitespace-only lines of .github/.secret-allowlist are dropped before
 #     it is used. An empty fixed-string pattern matches every line, so one blank line
-#     would otherwise exempt every hit.
+#     would otherwise exempt every hit. This guards against an accident, not an attacker:
+#     both exemptions come from the tree under test, so a pull request controls them (a
+#     one-character phrase still exempts most hits). The kit's gitleaks guard is the
+#     control a pull request cannot edit;
+#   * a carriage return ends a line, as a newline does. A file with CR-only line endings
+#     would otherwise read as one line, and a pragma anywhere in it would exempt a key
+#     anywhere else in it;
+#   * only the top-level dist and node_modules folders are skipped. The workflow pruned
+#     those names at any depth, so a committed src/dist/x.ts was never scanned.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -40,25 +48,28 @@ fail_closed() {
   exit 2
 }
 
-# The allowlist without blank or whitespace-only lines (grep 1 = every line was blank).
+# The allowlist without blank or whitespace-only lines (grep 1 = every line was blank). A carriage
+# return ends a phrase, as it ends a scanned line below.
 if [ -f .github/.secret-allowlist ]; then
   set +e
-  LC_ALL=C grep -av '^[[:space:]]*$' .github/.secret-allowlist >"$ALLOW_TMP"
-  rc=$?
+  LC_ALL=C tr '\r' '\n' <.github/.secret-allowlist | LC_ALL=C grep -av '^[[:space:]]*$' >"$ALLOW_TMP"
+  ALLOW_STATUS=("${PIPESTATUS[@]}")
   set -e
-  [ "$rc" -le 1 ] || fail_closed "allowlist read status $rc"
+  [ "${ALLOW_STATUS[0]}" -eq 0 ] || fail_closed "allowlist read status ${ALLOW_STATUS[*]}"
+  [ "${ALLOW_STATUS[1]}" -le 1 ] || fail_closed "allowlist read status ${ALLOW_STATUS[*]}"
 fi
 
-# Every regular file outside .git, node_modules and dist (the workflow's exclusions; symlinks are
-# not followed, as with grep -r). A find error fails closed.
-find . \( -name .git -o -name node_modules -o -name dist \) -prune -o -type f -print0 >"$LIST_TMP" ||
+# Every regular file outside .git, ./node_modules and ./dist (the workflow's exclusions, anchored to
+# the top level; symlinks are not followed, as with grep -r). A find error fails closed.
+find . \( -name .git -o -path ./node_modules -o -path ./dist \) -prune -o -type f -print0 >"$LIST_TMP" ||
   fail_closed "file listing failed"
 
-# Each file's NUL bytes are removed and a newline is added after it, so no line runs across two files.
+# Each file's NUL bytes are removed, every carriage return becomes a newline, and a newline is added
+# after the file, so no line runs across two files or past a CR.
 emit_contents() {
   local f
   while IFS= read -r -d '' f; do
-    LC_ALL=C tr -d '\000' <"$f" || return 2
+    LC_ALL=C tr -d '\000' <"$f" | LC_ALL=C tr '\r' '\n' || return 2
     printf '\n'
   done <"$LIST_TMP"
 }
