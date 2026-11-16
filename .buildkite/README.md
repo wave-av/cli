@@ -11,7 +11,7 @@ the two leak guards.
 | `.buildkite/pipeline.yml` | The kit's thin uploader, byte-for-byte. Three copies of one upload step with different priorities; exactly one runs on any build. Do not edit it here. |
 | `.buildkite/wave-ci.sh` | The kit's fixed shim, mode 100755, identical in every repository that uses the kit. In a build it uses only the kit checkout the build host prepared for the pinned commit, checks that checkout, then renders, lints and uploads this repository's pipeline. |
 | `.buildkite/wave-ci.json` | This repository's settings: the kit commit (a full 40-character SHA, never a branch or tag), template `custom`, visibility `public`, default branch `main`, and the repository's own steps under `extra_steps`. Change the pipeline here. |
-| `.buildkite/scripts/upload.sh` | A temporary bridge. The pipeline's Steps setting, which lives in Buildkite and not in this repository, still runs this file. It uploads `pipeline.yml` unchanged. It goes away once the Steps setting holds the same YAML as `pipeline.yml` (see "Outside this repository"). |
+| `.buildkite/scripts/upload.sh` | A temporary bridge. The pipeline's Steps setting, which lives in Buildkite and not in this repository, still runs this file. It uploads `pipeline.yml` unchanged, and only when `pipeline.yml` is byte-for-byte the kit's uploader in the kit checkout the build host prepared for the pin; anything else exits 2. It goes away once the Steps setting holds the same YAML as `pipeline.yml` (see "Outside this repository"). |
 
 ## Steps
 
@@ -46,11 +46,15 @@ refused with a message that the base branch has no trusted guard pin. The other 
 After this change merges, the first `main` build runs the guards from the pin, and later pull
 requests take them from that base pin.
 
-At the pinned kit commit, the content-policy guard on a `main` build is rendered as a step that
-expects a host-side value that public repositories do not receive. A kit change that adds a
-secret-free public mode for that step is in review. Until this repository's pin includes it, that
-step on `main` is expected to fail closed. The pin moves forward in a separate change after the
-kit change merges; no host-side grant is added for this public repository.
+At the pinned kit commit, the renderer does not yet read `visibility`. On a `main` build it
+renders the content-policy guard as a step that declares the private-repo list and runs on the
+queue for steps that hold a secret. Whether the build host injects the value depends only on a
+host-side grant, and no grant is added for this public repository, so that step on `main` is
+expected to fail closed. Nothing in this repository or in the kit at this pin enforces that; it
+rests on the grant not being added. A kit change that adds a public mode (every step on the
+ordinary queue, no secret declared) is in review. This repository's pin must move to a kit commit
+that includes it before this layout is relied on for `main`. Pull-request and merge-group builds
+declare no secret at this pin.
 
 ## Differences from the GitHub workflows
 
@@ -60,13 +64,20 @@ kit change merges; no host-side grant is added for this public repository.
   not part of this pipeline.
 - **Not included:** the scheduled `registry-drift` job, the release workflows, and the bots that
   GitHub triggers on events (issue triage, PR-body checks).
-- **Content policy without the private-repo rule.** That rule needs a confidential list, and this
-  public repository's builds never receive one. A private name is not caught by this pipeline; the
-  other content-policy rules, gitleaks and the foundation secret scan still run.
-- **Secret-scan exemptions match content only.** `foundation-secret-scan` runs `grep -h`, so the
-  `pragma: allowlist secret` marker and `.github/.secret-allowlist` phrases are matched against
-  the line's content, never its file or folder name. The workflow filtered the whole
-  `path:line:content` record.
+- **Content policy without the private-repo rule.** That rule needs a confidential list. At the
+  pinned kit commit, pull-request and merge-group builds do not declare it, and `main` builds
+  declare it but get no value only as long as no host-side grant is added for this repository
+  (see above). Without the list the rule cannot run, so a private name is not caught by this
+  pipeline; the other content-policy rules, gitleaks and the foundation secret scan still run.
+- **Secret-scan exemptions match content only.** `foundation-secret-scan` reads file contents on
+  standard input, so the `pragma: allowlist secret` marker and `.github/.secret-allowlist` phrases
+  are matched against the line's content, never its file or folder name. The workflow filtered the
+  whole `path:line:content` record.
+- **Secret scan reads binary and UTF-16 files.** The workflow's `grep -rI` skips any file that
+  holds a NUL byte, which includes text stored as UTF-16. Here each file's NUL bytes are removed
+  before the match, so a key in a UTF-16 file (with or without a byte-order mark) is caught.
+- **Blank allowlist lines are ignored.** An empty phrase would match every line and so exempt every
+  hit; blank and whitespace-only lines of `.github/.secret-allowlist` are dropped first.
 - **File-size gate refuses symlinks and counts every line.** `foundation-file-size` fails on a
   tracked source file that is a symlink, and counts a final line that has no trailing newline.
 - **Route check reads wildcard routes.** `foundation-verify-routes` also extracts a route whose
@@ -86,8 +97,11 @@ kit change merges; no host-side grant is added for this public repository.
 
 ## Credentials
 
-None. No step of this repository receives a secret on any build, and none is in this repository
-or in the pipeline file.
+This repository's own steps (`extra_steps`) declare no secret on any build, and no secret value is
+in this repository or in the pipeline file. The kit-injected content-policy guard is the one
+exception at the current pin: on `main` builds it declares the private-repo list, as described in
+"The first pull request is red on the guards by design". It gets no value only as long as no
+host-side grant is added for it; the kit's public mode removes the declaration itself.
 
 ## Outside this repository
 
@@ -119,6 +133,7 @@ bash .buildkite/tests/foundation.test.sh
 
 `foundation.test.sh` builds throwaway repositories under a temp folder and checks the secret
 scan's content-only exemptions, the file-size gate (symlinks, an unterminated last line), the route
-check on wildcard routes, the skill check on indented duplicate keys, and the upload bridge's
-refusals. It needs no network and no credential. Pass an older checkout's root as the first
-argument to run the same cases against that code.
+check on wildcard routes, the skill check on indented duplicate keys, the secret scan on UTF-16
+files and blank allowlist lines, and the upload bridge's byte comparison with the kit uploader. It
+needs no network and no credential. Pass an older checkout's root as the first argument to run the
+same cases against that code.
