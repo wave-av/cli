@@ -10,13 +10,14 @@
 # Ordering is load-bearing. The two leak guards run first, each followed by a `wait` barrier, so
 # every later step depends on both guards. Do not remove a barrier or move a step above one.
 #
-# Secrets: the content-policy guards take none. This is a public repository, and the CI host injects
-# no value into its builds (a standing decision), so the private-repo rule does not apply here by
-# design. guard-content-policy runs on every non-pull-request build, guard-content-policy-pr on
-# pull requests (README "Host-side setup"). governance-enforce still sits on fpc-isolated-secrets
-# behind its `if:`, which only prevents accidental exposure.
+# Secrets: none, on any build. This is a public repository, and the CI host injects no value into
+# its builds (a standing decision). So the private-repo rule does not apply here by design:
+# guard-content-policy runs on every non-pull-request build, guard-content-policy-pr on pull
+# requests. governance-enforce is not a step here: its enforcer package is private and cannot be
+# installed without a registry token (README "Not in this pipeline"). Do not add a step that needs
+# a host-injected value.
 #
-# Queues: fpc-isolated by default.
+# Queue: fpc-isolated for every step.
 
 agents:
   queue: fpc-isolated
@@ -77,23 +78,6 @@ steps:
         permit_on_passed: false
 
   - wait
-
-  - label: ":scales: governance enforce (diff)"
-    key: governance-enforce
-    command: .buildkite/scripts/governance-enforce.sh
-    if: build.pull_request.id == null && build.branch == pipeline.default_branch
-    agents:
-      queue: fpc-isolated-secrets
-    timeout_in_minutes: 10
-    retry:
-      automatic:
-        - exit_status: -1
-          limit: 1
-        - exit_status: 255
-          limit: 1
-      manual:
-        allowed: true
-        permit_on_passed: false
 
   - label: ":typescript: type-check + build + unit tests"
     key: unit

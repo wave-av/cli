@@ -12,7 +12,6 @@ after both guards pass.
 | `guard-gitleaks` | public-repo-guard.yml `gitleaks` steps (pinned gitleaks 8.30.1, checksum-verified) | `fpc-isolated` | none |
 | `guard-content-policy` | public-repo-guard.yml `content policy` step, without the private-repo rule; non-pull-request builds of any branch | `fpc-isolated` | none |
 | `guard-content-policy-pr` | the same step on pull-request builds, without the private-repo rule | `fpc-isolated` | none |
-| `governance-enforce` | governance-enforce.yml `enforce`; non-pull-request builds of the default branch only | `fpc-isolated-secrets` | `NODE_AUTH_TOKEN` (package registry read, for `@wave-av/governance`) |
 | `unit` | smoke-install.yml `unit` (type-check, build, unit tests) | `fpc-isolated` | none |
 | `smoke` | smoke-install.yml `smoke` (pack, fresh install, version and banner check) | `fpc-isolated` | none |
 | `license-truth` | license-truth.yml `local-truth` | `fpc-isolated` | none |
@@ -60,69 +59,37 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   with an org-level list. This public repository's Buildkite builds never receive that list, by
   design, so the rule does not run here at all. A private name is not caught by this pipeline;
   the other content-policy rules, gitleaks and the foundation secret scan still run.
-- **`governance-enforce` is skipped off the default branch.** It takes a host-injected value, and
-  every step's command is checkout code, so on a pull request or a non-default branch the author
-  controls it. Its `if:` skips it there, which only prevents accidental exposure: a pull request
-  can delete it. The secrets boundary is the host (see "Host-side setup").
+- **No `governance-enforce`.** See "Not in this pipeline" below.
 - **Not mirrored yet:** the content-policy fixture self-test step of `public-repo-guard.yml`, and
   `public-repo-guard-body.yml` (the pull-request body scan). Both block retiring
   `public-repo-guard.yml`.
-- **Push diff base for `governance-enforce`.** GitHub diffed a push against the push's `before` sha.
-  Buildkite does not provide one, so push builds diff against the first parent (`HEAD^1`). For a
-  merge commit, that covers the whole merged branch. A direct push of several non-merge commits
-  would have only its last commit scanned. (The script's pull-request branch, a diff against the
-  merge-base with the target branch, now runs only locally or by hand.) If no base resolves, the
-  step scans the full tree.
+## Not in this pipeline
+
+- **`governance-enforce`** (governance-enforce.yml `enforce`, secrets and hardcoded paths on the
+  diff). Its enforcer, `@wave-av/governance`, is a private package. The self-hosted registry it
+  lives on refuses anonymous reads, and the CI host gives this public repository no token, by
+  standing decision. So no build of this pipeline can install it, and a step for it could only fail
+  closed. It is left out of the step list rather than left red. `.buildkite/scripts/governance-enforce.sh`
+  stays in the repository for local and manual runs. The GitHub Actions copy has not run since the
+  Actions billing lock, so no running coverage is lost. On Buildkite, diffs are still covered by
+  `guard-gitleaks`, the content policy and `foundation-secret-scan`; hardcoded developer paths are
+  covered by the content policy's `abs-user-path` rule.
 
 ## Credentials
 
-Only the CI host injects values, per step key. None is in this repository or in the pipeline file,
-and nothing in a job's checkout or environment decides whether a job gets one (see "Host-side
-setup").
-
-- `governance-enforce`: a package-registry read token (`NODE_AUTH_TOKEN` in this script). The
-  script moves it into a non-exported shell variable before anything else runs. It hands the token
-  to the single `npm install` of the enforcer through a job-local npmrc placeholder, so the token
-  is never written to disk or printed. The install runs with `--ignore-scripts`. Without the token
-  the step fails closed.
-- `guard-content-policy` and `guard-content-policy-pr`: none. They never receive the private-repo
-  list (`GUARD_PRIVATE_REPOS`, `GUARD_PRIVATE_REPOS_01`..`_06`); its presence fails closed.
+None. No step in this pipeline receives a secret on any build, and none is in this repository or
+in the pipeline file. The content-policy steps fail closed if the private-repo list
+(`GUARD_PRIVATE_REPOS`, `GUARD_PRIVATE_REPOS_01`..`_06`) is present in a job.
 
 ## Host-side setup
 
-The secrets boundary is on the CI host, not in this repository. A pull request controls
-`pipeline.yml` and every script here, so nothing in them can be the boundary.
+The CI host injects secrets only into jobs it trusts, and it reads each job's identity from the
+Buildkite API, never from the job. A pull request controls `pipeline.yml` and every script here,
+so nothing in this repository can be a secrets boundary. That is why this pipeline is written to
+need no secret at all. The host's allowlist has no entry for this public repository, by standing
+decision.
 
-**What the host checks before it injects anything.** The host reads each job's identity from the
-Buildkite API, never from the job. A job on the secret-bearing queue is refused before any secret
-lookup unless all of these are true:
-
-- the build is not a pull request;
-- it has no tag;
-- its branch is the pipeline's default branch;
-- its source is a repository webhook (a scheduled build is admitted only for grants that allow
-  schedules). Builds started by hand, through the API, or by a trigger step are refused.
-
-A grant limited to the default branch (the kind this repository needs) also requires a webhook
-push build whose commit the code host reports is on the default branch. Values come from a per
-(pipeline, step key) allowlist kept on the host, never read from a job checkout. A step that is
-not listed gets nothing.
-
-**What the host grants this repository today: nothing.** The host allowlist has no entry for this
-pipeline, and its policy says public repositories get none (a standing decision). It also grants
-`NODE_AUTH_TOKEN` to no pipeline, so `governance-enforce` fails for lack of a token. The content
-policy steps need nothing from the host. Where the host grants a registry read token to
-`governance-enforce` for other pipelines, that grant is not limited to the default branch: it also
-covers same-repository builds whose `.buildkite/` matches the default branch's.
-
-**Required host-side changes, operator decision:**
-
-- An explicit exception to the public-repository rule for `governance-enforce`, or a decision to
-  keep it unfed.
-- If granted, the registry read token for `governance-enforce` must be limited to default-branch
-  push builds, not the broader policy that other pipelines use.
-
-**Also outside `pipeline.yml`:**
+Outside `pipeline.yml`:
 
 - A Buildkite pipeline for this repository whose only settings step runs
   `.buildkite/scripts/upload.sh`, with pull-request builds and commit statuses on.
@@ -135,8 +102,7 @@ Node 22 with npm, `bash`, `git`, `grep`, `sed`, `find`, `curl`, `sha256sum`, `ta
 built with PCRE2 (`rg --pcre2-version` must succeed; the content policy uses `rg -P` and fails
 closed without it), and `python3` with PyYAML (`python3 -c 'import yaml'` must succeed;
 `foundation-skill-validate` needs it once the repo has a `SKILL.md` and never installs it at run
-time). Network access to `registry.npmjs.org` and `github.com` (gitleaks release download),
-plus `npm.pkg.github.com` for `governance-enforce`.
+time). Network access to `registry.npmjs.org` and `github.com` (gitleaks release download).
 
 ## Run locally
 

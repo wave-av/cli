@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Step `governance-enforce`: governance-enforce.yml `enforce`. Runs the @wave-av/governance enforcer
-# (secrets + hardcoded paths) over the diff. pipeline.yml runs it only on non-pull-request builds of
-# the default branch, because it receives a host-injected token and its command is checkout code.
-# The PR-base branch below is kept for local and manual runs.
+# (secrets + hardcoded paths) over the diff. NOT in pipeline.yml's step list: @wave-av/governance is
+# private, its registry refuses anonymous reads, and the CI host gives this public repository no
+# token (README "Not in this pipeline"). The script is kept for local and manual runs.
 #
 # Same pins and fail-closed rules as the GH job: @wave-av/governance@0.4.6 exactly, --ignore-scripts,
 # and a base that cannot be resolved means a FULL scan against the empty tree, never a partial or

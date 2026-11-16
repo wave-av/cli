@@ -83,10 +83,10 @@ _guard_is_pr_number() {
   )
 }
 
-# True when any host-injected private-repo list name is set, including empty.
-# A pull-request build must not carry these names. A set name is an
-# overridden job environment; presence is enough, and the value is never
-# printed.
+# True when any private-repo list name is set, including empty. No build of
+# this public repository's pipeline may carry these names. A set name is an
+# overridden or misconfigured job environment; presence is enough, and the
+# value is never printed.
 _guard_private_list_present() {
   local _name
   for _name in \
