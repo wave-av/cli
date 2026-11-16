@@ -8,16 +8,15 @@
 # and no secret values in env. Each step runs in its own fresh guest.
 #
 # Ordering is load-bearing. The two leak guards run first, each followed by a `wait` barrier, so
-# every later step (and every step that receives a host-injected value) depends on both guards.
-# Do not remove a barrier or move a step above one.
+# every later step depends on both guards. Do not remove a barrier or move a step above one.
 #
-# Queues: fpc-isolated by default. Steps that receive a host-injected value (governance-enforce,
-# guard-content-policy) run on fpc-isolated-secrets, the only queue where the host injects values,
-# by step key. Their `if:` skips them on pull requests and other branches, because a step's command
-# is checkout code the author controls there. That `if:` only prevents accidental exposure: a pull
-# request can delete it. The secrets boundary is the host, which injects values only into trusted
-# default-branch push builds (README "Host-side setup"). Pull-request builds run the content policy
-# as guard-content-policy-pr on fpc-isolated, with no secret, and skip governance-enforce.
+# Secrets: the content-policy guards take none. This is a public repository, and the CI host injects
+# no value into its builds (a standing decision), so the private-repo rule does not apply here by
+# design. guard-content-policy runs on every non-pull-request build, guard-content-policy-pr on
+# pull requests (README "Host-side setup"). governance-enforce still sits on fpc-isolated-secrets
+# behind its `if:`, which only prevents accidental exposure.
+#
+# Queues: fpc-isolated by default.
 
 agents:
   queue: fpc-isolated
@@ -48,9 +47,7 @@ steps:
   - label: ":clipboard: guard content-policy"
     key: guard-content-policy
     command: .buildkite/scripts/guard-content-policy.sh
-    if: build.pull_request.id == null && build.branch == pipeline.default_branch
-    agents:
-      queue: fpc-isolated-secrets
+    if: build.pull_request.id == null
     timeout_in_minutes: 10
     retry:
       automatic:

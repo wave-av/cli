@@ -10,7 +10,7 @@ after both guards pass.
 | step key | mirrors (GitHub workflow / job) | queue | credential |
 |---|---|---|---|
 | `guard-gitleaks` | public-repo-guard.yml `gitleaks` steps (pinned gitleaks 8.30.1, checksum-verified) | `fpc-isolated` | none |
-| `guard-content-policy` | public-repo-guard.yml `content policy` step; non-pull-request builds of the default branch only | `fpc-isolated-secrets` | `GUARD_PRIVATE_REPOS` (or `GUARD_PRIVATE_REPOS_01`..`_06`) |
+| `guard-content-policy` | public-repo-guard.yml `content policy` step, without the private-repo rule; non-pull-request builds of any branch | `fpc-isolated` | none |
 | `guard-content-policy-pr` | the same step on pull-request builds, without the private-repo rule | `fpc-isolated` | none |
 | `governance-enforce` | governance-enforce.yml `enforce`; non-pull-request builds of the default branch only | `fpc-isolated-secrets` | `NODE_AUTH_TOKEN` (package registry read, for `@wave-av/governance`) |
 | `unit` | smoke-install.yml `unit` (type-check, build, unit tests) | `fpc-isolated` | none |
@@ -36,12 +36,13 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   (the author picks that), and it is fetched explicitly on every such build (Buildkite's checkout
   does not refresh it), so a stale or absent remote-tracking ref is never trusted. A missing or
   invalid default branch name, a fetch failure, or a default branch without the guard script fails
-  closed (exit 2). The first
-  pull request that adds this guard therefore fails `guard-gitleaks` by design; it passes once the
-  guard is on the default branch.
-- **content policy.** Runs the vendored `scripts/public-repo-guard/content-policy.sh`.
-  Non-pull-request builds of the default branch need the private-repo list from the host and fail
-  closed without it. Push builds of other branches run neither content-policy step. On a
+  closed (exit 2). The first pull request that adds this guard therefore fails `guard-gitleaks` by
+  design; it passes once the guard is on the default branch.
+- **content policy.** Runs the vendored `scripts/public-repo-guard/content-policy.sh` with the same
+  public-safe rule set on every build: every rule except private-repo. The private-repo rule needs
+  a confidential list, and this public repository's builds never receive one, by design. If any
+  form of that list is present in a job, the step fails closed (exit 2). Non-pull-request builds
+  (`guard-content-policy`) run this checkout's policy. On a
   pull-request build, `guard-content-policy-pr` runs the default branch's policy and `.guardignore`
   against a copy of the PR tree, ignores inline `# guard:allow` markers and the copy's `.ignore`,
   `.rgignore` and `.gitignore` files, and logs that the private-repo rule was not checked. A pull
@@ -55,18 +56,14 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   not part of this pipeline.
 - **Not included:** the scheduled `registry-drift` job, the release workflows, and the bots that
   GitHub triggers on events (issue triage, PR-body checks).
-- **Pull-request content policy without the private-repo rule.** GitHub ran the private-repo rule on
-  pull requests too. Here pull-request builds do not receive the list; the rule runs on every build
-  of the default branch. A private name in a pull request is therefore caught only after merge.
-- **Secret-bearing steps are skipped off the default branch.** Every step's command is checkout
-  code, so on a pull request or a non-default branch the author controls it. The two steps that
-  take a host-injected value (`guard-content-policy`, `governance-enforce`) carry an `if:` that
-  skips them on pull requests and on other branches. That `if:` only prevents accidental exposure.
-  A pull request can delete it, and anyone who can start a build can choose its branch. The
-  secrets boundary is the host (see "Host-side setup"). GitHub ran `governance-enforce` on
-  same-repo pull requests with its token; here pull requests skip it, and push builds of other
-  branches skip both. Pull requests still get `guard-gitleaks`, `guard-content-policy-pr` and
-  `foundation-secret-scan`.
+- **Content policy without the private-repo rule, on every build.** GitHub ran the private-repo rule
+  with an org-level list. This public repository's Buildkite builds never receive that list, by
+  design, so the rule does not run here at all. A private name is not caught by this pipeline;
+  the other content-policy rules, gitleaks and the foundation secret scan still run.
+- **`governance-enforce` is skipped off the default branch.** It takes a host-injected value, and
+  every step's command is checkout code, so on a pull request or a non-default branch the author
+  controls it. Its `if:` skips it there, which only prevents accidental exposure: a pull request
+  can delete it. The secrets boundary is the host (see "Host-side setup").
 - **Not mirrored yet:** the content-policy fixture self-test step of `public-repo-guard.yml`, and
   `public-repo-guard-body.yml` (the pull-request body scan). Both block retiring
   `public-repo-guard.yml`.
@@ -88,8 +85,8 @@ setup").
   to the single `npm install` of the enforcer through a job-local npmrc placeholder, so the token
   is never written to disk or printed. The install runs with `--ignore-scripts`. Without the token
   the step fails closed.
-- `guard-content-policy`: `GUARD_PRIVATE_REPOS`, or all six of `GUARD_PRIVATE_REPOS_01`..`_06`
-  when the list is too long for one value. A missing or blank value fails closed.
+- `guard-content-policy` and `guard-content-policy-pr`: none. They never receive the private-repo
+  list (`GUARD_PRIVATE_REPOS`, `GUARD_PRIVATE_REPOS_01`..`_06`); its presence fails closed.
 
 ## Host-side setup
 
@@ -112,21 +109,18 @@ push build whose commit the code host reports is on the default branch. Values c
 not listed gets nothing.
 
 **What the host grants this repository today: nothing.** The host allowlist has no entry for this
-pipeline, and its policy says public repositories get none. It also grants `NODE_AUTH_TOKEN` to no
-pipeline. Until this changes, every default-branch build fails closed at `guard-content-policy`,
-and `governance-enforce` fails for lack of a token. Where the host grants a registry read token to
+pipeline, and its policy says public repositories get none (a standing decision). It also grants
+`NODE_AUTH_TOKEN` to no pipeline, so `governance-enforce` fails for lack of a token. The content
+policy steps need nothing from the host. Where the host grants a registry read token to
 `governance-enforce` for other pipelines, that grant is not limited to the default branch: it also
 covers same-repository builds whose `.buildkite/` matches the default branch's.
 
 **Required host-side changes, operator decision:**
 
-- An explicit exception to the public-repository rule, or a decision to keep these two steps
-  unfed.
-- If granted, both entries must be limited to default-branch push builds: the six
-  `GUARD_PRIVATE_REPOS_*` chunks for `guard-content-policy`, and the registry read token for
-  `governance-enforce` (its name follows the registry the install uses). The registry grant must
-  not use the broader policy
-  that other pipelines use.
+- An explicit exception to the public-repository rule for `governance-enforce`, or a decision to
+  keep it unfed.
+- If granted, the registry read token for `governance-enforce` must be limited to default-branch
+  push builds, not the broader policy that other pipelines use.
 
 **Also outside `pipeline.yml`:**
 
