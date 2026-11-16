@@ -98,8 +98,9 @@ Not expressible in `pipeline.yml`:
 
 ## Build-image prerequisites
 
-Node 22 with npm, `bash`, `git`, `grep`, `sed`, `find`, `curl`, `sha256sum`, `tar`, ripgrep (`rg`),
-and `python3`. Network access to `registry.npmjs.org` and `github.com` (gitleaks release download),
+Node 22 with npm, `bash`, `git`, `grep`, `sed`, `find`, `curl`, `sha256sum`, `tar`, ripgrep (`rg`)
+built with PCRE2 (`rg --pcre2-version` must succeed; the content policy uses `rg -P` and fails
+closed without it), and `python3`. Network access to `registry.npmjs.org` and `github.com` (gitleaks release download),
 plus `npm.pkg.github.com` for `governance-enforce`.
 
 ## Run locally

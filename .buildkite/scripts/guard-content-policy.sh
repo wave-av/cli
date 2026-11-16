@@ -53,7 +53,8 @@
 # that needs a host-side anchor (.buildkite/README.md, "Host-side setup").
 #
 # The GitHub workflow apt-installs ripgrep when missing; build guests must not
-# assume sudo/apt, so a missing rg fails closed with a clear message instead.
+# assume sudo/apt, so a missing rg, or an rg without PCRE2 (the policy uses
+# rg -P), fails closed with a clear message instead.
 set -euo pipefail
 
 # The default branch's copy of this file is re-executed in PR mode only
@@ -231,6 +232,12 @@ fi
 
 command -v rg >/dev/null 2>&1 || {
   echo "ripgrep (rg) is required but not installed in the agent image — failing closed."
+  exit 2
+}
+# The policy runs `rg -P`, which errors on a ripgrep built without PCRE2.
+# `rg --pcre2-version` exits non-zero on such a build, so require it here.
+env -u RIPGREP_CONFIG_PATH rg --pcre2-version >/dev/null 2>&1 || {
+  echo "ripgrep (rg) in the agent image has no PCRE2 support (rg --pcre2-version failed); the policy needs rg -P — failing closed."
   exit 2
 }
 if [ "$_guard_stage" = "2" ] && [ "${WAVE_JOB_GUARD_PR:-}" != "1" ]; then
