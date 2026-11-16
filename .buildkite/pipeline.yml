@@ -13,10 +13,11 @@
 #
 # Queues: fpc-isolated by default. Steps that receive a host-injected value (governance-enforce,
 # guard-content-policy) run on fpc-isolated-secrets, the only queue where the host injects values,
-# by step key. They run ONLY on non-pull-request builds of the default branch: a step's command is
-# checkout code, so on a pull request or any other branch it is code the author controls, and no
-# secret may reach it. Pull-request builds run the content policy as guard-content-policy-pr on
-# fpc-isolated, with no secret, and skip governance-enforce (README "Host-side setup").
+# by step key. Their `if:` skips them on pull requests and other branches, because a step's command
+# is checkout code the author controls there. That `if:` only prevents accidental exposure: a pull
+# request can delete it. The secrets boundary is the host, which injects values only into trusted
+# default-branch push builds (README "Host-side setup"). Pull-request builds run the content policy
+# as guard-content-policy-pr on fpc-isolated, with no secret, and skip governance-enforce.
 
 agents:
   queue: fpc-isolated

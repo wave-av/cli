@@ -58,12 +58,15 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
 - **Pull-request content policy without the private-repo rule.** GitHub ran the private-repo rule on
   pull requests too. Here pull-request builds do not receive the list; the rule runs on every build
   of the default branch. A private name in a pull request is therefore caught only after merge.
-- **No secret reaches author-controlled code.** Every step's command is checkout code, so on a pull
-  request or a non-default branch the author controls it. The two steps that receive a
-  host-injected value (`guard-content-policy`, `governance-enforce`) therefore run only on
-  non-pull-request builds of the default branch. GitHub ran `governance-enforce` on same-repo pull
-  requests with its token; here pull requests skip it, and push builds of other branches skip both.
-  Pull requests still get `guard-gitleaks`, `guard-content-policy-pr` and `foundation-secret-scan`.
+- **Secret-bearing steps are skipped off the default branch.** Every step's command is checkout
+  code, so on a pull request or a non-default branch the author controls it. The two steps that
+  take a host-injected value (`guard-content-policy`, `governance-enforce`) carry an `if:` that
+  skips them on pull requests and on other branches. That `if:` only prevents accidental exposure.
+  A pull request can delete it, and anyone who can start a build can choose its branch. The
+  secrets boundary is the host (see "Host-side setup"). GitHub ran `governance-enforce` on
+  same-repo pull requests with its token; here pull requests skip it, and push builds of other
+  branches skip both. Pull requests still get `guard-gitleaks`, `guard-content-policy-pr` and
+  `foundation-secret-scan`.
 - **Not mirrored yet:** the content-policy fixture self-test step of `public-repo-guard.yml`, and
   `public-repo-guard-body.yml` (the pull-request body scan). Both block retiring
   `public-repo-guard.yml`.
@@ -76,27 +79,61 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
 
 ## Credentials
 
-Values are injected by the host, by step key, on the `fpc-isolated-secrets` queue only. None is in
-this repository or in the pipeline file.
+Only the CI host injects values, per step key. None is in this repository or in the pipeline file,
+and nothing in a job's checkout or environment decides whether a job gets one (see "Host-side
+setup").
 
-- `governance-enforce`: `NODE_AUTH_TOKEN`. The script moves it into a non-exported shell variable
-  before anything else runs. It hands the token to the single `npm install` of the enforcer through
-  a job-local npmrc placeholder, so the token is never written to disk or printed. The install runs
-  with `--ignore-scripts`. Only non-pull-request builds of the default branch receive it; no
-  pull-request build does, from a fork or not.
-- `guard-content-policy`: `GUARD_PRIVATE_REPOS`, or all six of `GUARD_PRIVATE_REPOS_01`..`_06` when
-  the host channel caps a value at 512 bytes. A missing or blank value fails closed.
+- `governance-enforce`: a package-registry read token (`NODE_AUTH_TOKEN` in this script). The
+  script moves it into a non-exported shell variable before anything else runs. It hands the token
+  to the single `npm install` of the enforcer through a job-local npmrc placeholder, so the token
+  is never written to disk or printed. The install runs with `--ignore-scripts`. Without the token
+  the step fails closed.
+- `guard-content-policy`: `GUARD_PRIVATE_REPOS`, or all six of `GUARD_PRIVATE_REPOS_01`..`_06`
+  when the list is too long for one value. A missing or blank value fails closed.
 
 ## Host-side setup
 
-Not expressible in `pipeline.yml`:
+The secrets boundary is on the CI host, not in this repository. A pull request controls
+`pipeline.yml` and every script here, so nothing in them can be the boundary.
+
+**What the host checks before it injects anything.** The host reads each job's identity from the
+Buildkite API, never from the job. A job on the secret-bearing queue is refused before any secret
+lookup unless all of these are true:
+
+- the build is not a pull request;
+- it has no tag;
+- its branch is the pipeline's default branch;
+- its source is a repository webhook (a scheduled build is admitted only for grants that allow
+  schedules). Builds started by hand, through the API, or by a trigger step are refused.
+
+A grant limited to the default branch (the kind this repository needs) also requires a webhook
+push build whose commit the code host reports is on the default branch. Values come from a per
+(pipeline, step key) allowlist kept on the host, never read from a job checkout. A step that is
+not listed gets nothing.
+
+**What the host grants this repository today: nothing.** The host allowlist has no entry for this
+pipeline, and its policy says public repositories get none. It also grants `NODE_AUTH_TOKEN` to no
+pipeline. Until this changes, every default-branch build fails closed at `guard-content-policy`,
+and `governance-enforce` fails for lack of a token. Where the host grants a registry read token to
+`governance-enforce` for other pipelines, that grant is not limited to the default branch: it also
+covers same-repository builds whose `.buildkite/` matches the default branch's.
+
+**Required host-side changes, operator decision:**
+
+- An explicit exception to the public-repository rule, or a decision to keep these two steps
+  unfed.
+- If granted, both entries must be limited to default-branch push builds: the six
+  `GUARD_PRIVATE_REPOS_*` chunks for `guard-content-policy`, and the registry read token for
+  `governance-enforce` (its name follows the registry the install uses). The registry grant must
+  not use the broader policy
+  that other pipelines use.
+
+**Also outside `pipeline.yml`:**
 
 - A Buildkite pipeline for this repository whose only settings step runs
-  `.buildkite/scripts/upload.sh` on `fpc-isolated`, with commit statuses on.
+  `.buildkite/scripts/upload.sh`, with pull-request builds and commit statuses on.
 - A repository webhook for `push` and `pull_request` events that points at that pipeline.
 - **Build pull requests from forks** off.
-- The host injection above, granted to the step keys `governance-enforce` and
-  `guard-content-policy` only.
 
 ## Build-image prerequisites
 
