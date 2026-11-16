@@ -3,14 +3,15 @@
 # `skill-validate` (SKILL.md frontmatter gate). Validates *SKILL.md in THIS repo; no-op if the
 # repo has none. The Python body mirrors the vendored _checks.yml; keep the two in sync.
 #
-# Needs PyYAML. Prefer the image's copy; otherwise pip-install a PINNED pyyaml
-# into a throwaway dir (the workflow installs unpinned `pyyaml`; the pin is the one
-# deliberate hardening: same gate, deterministic install).
+# Needs PyYAML from the build image (README "Build-image prerequisites"). There is
+# deliberately no run-time install: the workflow pip-installs `pyyaml`, but build
+# guests guarantee neither pip nor a package index, and a network install at run
+# time is not deterministic. A missing PyYAML fails closed with a clear message.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-# Cheap no-op check BEFORE touching PyYAML/pip: repos with no *SKILL.md exit
-# here, so a missing pip/PyYAML can never fail a repo the gate doesn't apply to.
+# Cheap no-op check BEFORE touching PyYAML: repos with no *SKILL.md exit
+# here, so a missing PyYAML can never fail a repo the gate doesn't apply to.
 # (The python body below re-checks after filtering vendored/reference paths.)
 if [ -z "$(git ls-files '*SKILL.md')" ]; then
   echo "no SKILL.md in repo — skill gate is a no-op"
@@ -18,11 +19,8 @@ if [ -z "$(git ls-files '*SKILL.md')" ]; then
 fi
 
 if ! python3 -c 'import yaml' 2>/dev/null; then
-  echo "PyYAML not in image; installing pinned pyyaml into a temp dir"
-  PYDIR="$(mktemp -d)"
-  trap 'rm -rf "$PYDIR"' EXIT
-  python3 -m pip install --quiet --target "$PYDIR" 'pyyaml==6.0.3'
-  export PYTHONPATH="$PYDIR${PYTHONPATH:+:$PYTHONPATH}"
+  echo "foundation-skill-validate: PyYAML is not installed in the build image (python3 -c 'import yaml' failed). It is a build-image prerequisite (.buildkite/README.md); there is no run-time install — failing closed."
+  exit 2
 fi
 
 python3 - <<'PY'

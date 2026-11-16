@@ -100,7 +100,9 @@ Not expressible in `pipeline.yml`:
 
 Node 22 with npm, `bash`, `git`, `grep`, `sed`, `find`, `curl`, `sha256sum`, `tar`, ripgrep (`rg`)
 built with PCRE2 (`rg --pcre2-version` must succeed; the content policy uses `rg -P` and fails
-closed without it), and `python3`. Network access to `registry.npmjs.org` and `github.com` (gitleaks release download),
+closed without it), and `python3` with PyYAML (`python3 -c 'import yaml'` must succeed;
+`foundation-skill-validate` needs it once the repo has a `SKILL.md` and never installs it at run
+time). Network access to `registry.npmjs.org` and `github.com` (gitleaks release download),
 plus `npm.pkg.github.com` for `governance-enforce`.
 
 ## Run locally
