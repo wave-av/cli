@@ -19,8 +19,9 @@
 # default branch that cannot be fetched, a missing trusted script, or a missing or
 # invalid default-branch name all fail closed (exit 2). The same trusted path covers
 # push builds of any branch other than the default branch: that code is as
-# author-controlled as a PR. Only a non-PR Buildkite build of the default branch, or a
-# local run outside Buildkite, scans directly with the worktree config.
+# author-controlled as a PR. Only a trusted Buildkite build of the default branch (no
+# tag, and HEAD on the freshly fetched default branch; see needs_trust), or a local
+# run outside Buildkite, scans directly with the worktree config.
 # GITLEAKS_BIN, when set, skips the download. It is a local test seam only: under
 # Buildkite (BUILDKITE set) it is refused, so job env cannot swap the scanner.
 #
@@ -36,17 +37,36 @@ is_pr_build() {
   [[ "${BUILDKITE_PULL_REQUEST:-false}" != "false" && -n "${BUILDKITE_PULL_REQUEST:-}" ]]
 }
 
-# needs_trust: true unless this is a local run (BUILDKITE unset) or a non-PR
-# Buildkite build of the pipeline's default branch. A missing branch or default
-# branch counts as untrusted, and the trusted path then fails closed.
+# needs_trust: true unless this is a local run (BUILDKITE unset) or a trusted
+# Buildkite build of the default branch. Trusted means: not a PR, BUILDKITE_TAG
+# empty, the branch equals the pipeline's default branch, AND HEAD is an
+# ancestor of the freshly fetched default branch (anyone who can start a build
+# can pick its branch name and commit, so the name alone is not enough). A
+# missing branch or default branch, or a failed fetch, counts as untrusted, and
+# the trusted path then fails closed. Computed once per process (_TRUST_STATE).
+_TRUST_STATE=""
 needs_trust() {
+  if [[ -z "$_TRUST_STATE" ]]; then
+    if compute_needs_trust; then _TRUST_STATE=untrusted; else _TRUST_STATE=trusted; fi
+  fi
+  [[ "$_TRUST_STATE" == untrusted ]]
+}
+
+compute_needs_trust() {
   if [[ -z "${BUILDKITE:-}" ]]; then
     is_pr_build
     return
   fi
   is_pr_build && return 0
+  [[ -n "${BUILDKITE_TAG:-}" ]] && return 0
   [[ -z "${BUILDKITE_BRANCH:-}" || -z "${BUILDKITE_PIPELINE_DEFAULT_BRANCH:-}" ]] && return 0
-  [[ "$BUILDKITE_BRANCH" != "$BUILDKITE_PIPELINE_DEFAULT_BRANCH" ]]
+  [[ "$BUILDKITE_BRANCH" != "$BUILDKITE_PIPELINE_DEFAULT_BRANCH" ]] && return 0
+  local ref
+  ref="$(base_ref 2>/dev/null)" || return 0
+  if git merge-base --is-ancestor HEAD "$ref" 2>/dev/null; then
+    return 1
+  fi
+  return 0
 }
 
 # base_ref: fetch the pipeline's DEFAULT branch explicitly and print the
@@ -134,7 +154,7 @@ main() {
       exit 2
     fi
     cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 2
-    WORK="$(mktemp -d)"
+    WORK="$(mktemp -d "${TMPDIR:-/tmp}/guard-gitleaks.XXXXXXXX")" || exit 2
   fi
   trap 'rm -rf "$WORK"' EXIT
   if [[ "$trusted" != "1" ]] && needs_trust; then

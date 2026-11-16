@@ -92,15 +92,29 @@ _guard_is_pr_number() {
 # in PR mode: a pull-request number without WAVE_JOB_GUARD_PR=1, or any build
 # whose branch is not the pipeline's default branch (a missing branch or
 # default branch counts as untrusted). Same rule as guard-gitleaks.sh
-# needs_trust. Such a build uses the default branch's policy and ignores every
-# in-tree escape, exactly as PR mode does. False outside Buildkite (local runs).
+# needs_trust. Such a build uses the default branch's policy and the same
+# escape handling as PR mode (see _guard_run_trusted_pr). False outside Buildkite (local runs).
+#
+# A default-branch build counts as trusted only when BUILDKITE_TAG is empty AND
+# HEAD is an ancestor of the freshly fetched default branch. Anyone who can
+# start a build can pick its branch name and commit, so the name alone is not
+# enough. A fetch failure counts as untrusted (the trusted runner then fails
+# closed on the same fetch).
 _guard_untrusted_branch_build() {
   [ -n "${BUILDKITE:-}" ] || return 1
   [ "${WAVE_JOB_GUARD_PR:-}" = "1" ] && return 1
   _guard_is_pr_number && return 0
+  [ -n "${BUILDKITE_TAG:-}" ] && return 0
   [ -z "${BUILDKITE_BRANCH:-}" ] && return 0
   [ -z "${BUILDKITE_PIPELINE_DEFAULT_BRANCH:-}" ] && return 0
-  [ "$BUILDKITE_BRANCH" != "$BUILDKITE_PIPELINE_DEFAULT_BRANCH" ]
+  [ "$BUILDKITE_BRANCH" != "$BUILDKITE_PIPELINE_DEFAULT_BRANCH" ] && return 0
+  git check-ref-format --branch "$BUILDKITE_PIPELINE_DEFAULT_BRANCH" >/dev/null 2>&1 || return 0
+  git -c core.hooksPath=/dev/null fetch --quiet --no-tags origin \
+    "+refs/heads/$BUILDKITE_PIPELINE_DEFAULT_BRANCH:refs/guard-content-policy/trusted" >/dev/null 2>&1 || return 0
+  if git merge-base --is-ancestor HEAD refs/guard-content-policy/trusted 2>/dev/null; then
+    return 1
+  fi
+  return 0
 }
 
 # True when any private-repo list name is set, including empty. No build of
