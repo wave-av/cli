@@ -75,8 +75,8 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   lives on refuses anonymous reads, and the CI host gives this public repository no token, by
   standing decision. So no build of this pipeline can install it, and a step for it could only fail
   closed. It is left out of the step list rather than left red. `.buildkite/scripts/governance-enforce.sh`
-  stays in the repository for local and manual runs. The GitHub Actions copy has not run since the
-  Actions billing lock, so no running coverage is lost. On Buildkite, diffs are still covered by
+  stays in the repository for local and manual runs. The old GitHub Actions copy has not run for
+  months, so no running coverage is lost. On Buildkite, diffs are still covered by
   `guard-gitleaks`, the content policy and `foundation-secret-scan`; hardcoded developer paths are
   covered by the content policy's `abs-user-path` rule.
 
@@ -107,7 +107,9 @@ Node 22 with npm, `bash`, `git`, `grep`, `sed`, `find`, `curl`, `sha256sum`, `ta
 built with PCRE2 (`rg --pcre2-version` must succeed; the content policy uses `rg -P` and fails
 closed without it), and `python3` with PyYAML (`python3 -c 'import yaml'` must succeed;
 `foundation-skill-validate` needs it once the repo has a `SKILL.md` and never installs it at run
-time). Network access to `registry.npmjs.org` and `github.com` (gitleaks release download).
+time). Network access to `registry.npmjs.org`, `github.com` (git fetches and the gitleaks
+release URL) and `release-assets.githubusercontent.com` (where GitHub redirects the gitleaks
+release download).
 
 ## Run locally
 
