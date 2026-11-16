@@ -10,9 +10,9 @@ after both guards pass.
 | step key | mirrors (GitHub workflow / job) | queue | credential |
 |---|---|---|---|
 | `guard-gitleaks` | public-repo-guard.yml `gitleaks` steps (pinned gitleaks 8.30.1, checksum-verified) | `fpc-isolated` | none |
-| `guard-content-policy` | public-repo-guard.yml `content policy` step; builds that are not pull requests | `fpc-isolated-secrets` | `GUARD_PRIVATE_REPOS` (or `GUARD_PRIVATE_REPOS_01`..`_06`) |
+| `guard-content-policy` | public-repo-guard.yml `content policy` step; non-pull-request builds of the default branch only | `fpc-isolated-secrets` | `GUARD_PRIVATE_REPOS` (or `GUARD_PRIVATE_REPOS_01`..`_06`) |
 | `guard-content-policy-pr` | the same step on pull-request builds, without the private-repo rule | `fpc-isolated` | none |
-| `governance-enforce` | governance-enforce.yml `enforce` | `fpc-isolated-secrets` | `NODE_AUTH_TOKEN` (GitHub Packages read, for `@wave-av/governance`) |
+| `governance-enforce` | governance-enforce.yml `enforce`; non-pull-request builds of the default branch only | `fpc-isolated-secrets` | `NODE_AUTH_TOKEN` (package registry read, for `@wave-av/governance`) |
 | `unit` | smoke-install.yml `unit` (type-check, build, unit tests) | `fpc-isolated` | none |
 | `smoke` | smoke-install.yml `smoke` (pack, fresh install, version and banner check) | `fpc-isolated` | none |
 | `license-truth` | license-truth.yml `local-truth` | `fpc-isolated` | none |
@@ -37,8 +37,9 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   base that cannot be fetched, or a base without the guard script fails closed (exit 2). The first
   pull request that adds this guard therefore fails `guard-gitleaks` by design; it passes once the
   guard is on the default branch.
-- **content policy.** Runs the vendored `scripts/public-repo-guard/content-policy.sh`. Builds that
-  are not pull requests need the private-repo list from the host and fail closed without it. On a
+- **content policy.** Runs the vendored `scripts/public-repo-guard/content-policy.sh`.
+  Non-pull-request builds of the default branch need the private-repo list from the host and fail
+  closed without it. Push builds of other branches run neither content-policy step. On a
   pull-request build, `guard-content-policy-pr` runs the default branch's policy and `.guardignore`
   against a copy of the PR tree, ignores inline `# guard:allow` markers and the copy's `.ignore`,
   `.rgignore` and `.gitignore` files, and logs that the private-repo rule was not checked. A pull
@@ -54,12 +55,22 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
   GitHub triggers on events (issue triage, PR-body checks).
 - **Pull-request content policy without the private-repo rule.** GitHub ran the private-repo rule on
   pull requests too. Here pull-request builds do not receive the list; the rule runs on every build
-  of the default branch.
+  of the default branch. A private name in a pull request is therefore caught only after merge.
+- **No secret reaches author-controlled code.** Every step's command is checkout code, so on a pull
+  request or a non-default branch the author controls it. The two steps that receive a
+  host-injected value (`guard-content-policy`, `governance-enforce`) therefore run only on
+  non-pull-request builds of the default branch. GitHub ran `governance-enforce` on same-repo pull
+  requests with its token; here pull requests skip it, and push builds of other branches skip both.
+  Pull requests still get `guard-gitleaks`, `guard-content-policy-pr` and `foundation-secret-scan`.
+- **Not mirrored yet:** the content-policy fixture self-test step of `public-repo-guard.yml`, and
+  `public-repo-guard-body.yml` (the pull-request body scan). Both block retiring
+  `public-repo-guard.yml`.
 - **Push diff base for `governance-enforce`.** GitHub diffed a push against the push's `before` sha.
   Buildkite does not provide one, so push builds diff against the first parent (`HEAD^1`). For a
   merge commit, that covers the whole merged branch. A direct push of several non-merge commits
-  would have only its last commit scanned. PR builds diff against the merge-base with the target
-  branch. If no base resolves, the step scans the full tree.
+  would have only its last commit scanned. (The script's pull-request branch, a diff against the
+  merge-base with the target branch, now runs only locally or by hand.) If no base resolves, the
+  step scans the full tree.
 
 ## Credentials
 
@@ -69,7 +80,8 @@ this repository or in the pipeline file.
 - `governance-enforce`: `NODE_AUTH_TOKEN`. The script moves it into a non-exported shell variable
   before anything else runs. It hands the token to the single `npm install` of the enforcer through
   a job-local npmrc placeholder, so the token is never written to disk or printed. The install runs
-  with `--ignore-scripts`. Builds of pull requests from forks never receive it.
+  with `--ignore-scripts`. Only non-pull-request builds of the default branch receive it; no
+  pull-request build does, from a fork or not.
 - `guard-content-policy`: `GUARD_PRIVATE_REPOS`, or all six of `GUARD_PRIVATE_REPOS_01`..`_06` when
   the host channel caps a value at 512 bytes. A missing or blank value fails closed.
 
