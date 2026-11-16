@@ -13,6 +13,10 @@ set -euo pipefail
 BK_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 export BK_REPO_ROOT
 
+# npm defaults for every step (the rendered pipeline sets no pipeline-wide env): no audit, no
+# funding notice, no update check. Non-secret; set here so each step script gets the same values.
+export NPM_CONFIG_AUDIT=false NPM_CONFIG_FUND=false NPM_CONFIG_UPDATE_NOTIFIER=false
+
 BK_SAME_REPO_RE='^(https://|git://|ssh://git@|git@)github\.com[:/]wave-av/cli(\.git)?$'
 
 _bk_cleanup_paths=()
