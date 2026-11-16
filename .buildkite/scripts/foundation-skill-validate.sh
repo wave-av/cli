@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # foundation-skill-validate: the Buildkite twin of .github/workflows/_checks.yml job
 # `skill-validate` (SKILL.md frontmatter gate). Validates *SKILL.md in THIS repo; no-op if the
-# repo has none. The Python body mirrors the vendored _checks.yml; keep the two in sync.
+# repo has none. The Python body mirrors the vendored _checks.yml; keep the two in sync. One
+# deliberate difference: duplicate frontmatter keys are found on the parsed YAML (any indentation),
+# not by a column-zero line scan.
 #
 # Needs PyYAML from the build image (README "Build-image prerequisites"). There is
 # deliberately no run-time install: the workflow pip-installs `pyyaml`, but build
@@ -26,7 +28,30 @@ fi
 python3 - <<'PY'
 import sys, os, re, subprocess
 import yaml
-allf = subprocess.run(["git","ls-files","*SKILL.md"], capture_output=True, text=True).stdout.splitlines()
+
+# Duplicate keys are found on the parsed YAML node tree, at any indentation and depth. PyYAML
+# itself keeps the last duplicate without a warning, and a column-zero text scan misses an
+# indented mapping, so neither alone catches `name: wrong` followed by `name: <directory>`.
+class DupKeyLoader(yaml.SafeLoader):
+    def __init__(self, stream):
+        super().__init__(stream)
+        self.dups = set()
+
+def _mapping_with_dups(loader, node, deep=False):
+    seen = set()
+    for key_node, _ in node.value:
+        key = loader.construct_object(key_node, deep=True)
+        try:
+            if key in seen:
+                loader.dups.add(str(key))
+            seen.add(key)
+        except TypeError:
+            pass  # unhashable key: construct_mapping below reports it
+    return loader.construct_mapping(node, deep=deep)
+
+DupKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping_with_dups)
+
+allf =subprocess.run(["git","ls-files","*SKILL.md"], capture_output=True, text=True).stdout.splitlines()
 # Only validate invocable skills; skip nested reference/vendored SKILL.md.
 skip = ("/references/", "/_external/", "/_consolidated", "/_archived", "/node_modules/", "/dist/")
 files = [f for f in allf if not any(s in "/" + f for s in skip)]
@@ -40,15 +65,14 @@ for p in files:
     if not m:
         errs.append(f"{p}: no frontmatter block"); continue
     fm = m.group(1)
-    seen, dup = set(), set()
-    for line in fm.split("\n"):
-        k = re.match(r"^([A-Za-z_][\w-]*):", line)
-        if k: (dup if k.group(1) in seen else seen).add(k.group(1))
-    if dup: errs.append(f"{p}: duplicate frontmatter keys: {', '.join(sorted(dup))}")
+    loader = DupKeyLoader(fm)
     try:
-        data = yaml.safe_load(fm) or {}
+        data = loader.get_single_data() or {}
     except yaml.YAMLError as e:
         errs.append(f"{p}: invalid YAML frontmatter: {e}"); continue
+    finally:
+        loader.dispose()
+    if loader.dups: errs.append(f"{p}: duplicate frontmatter keys: {', '.join(sorted(loader.dups))}")
     if not isinstance(data, dict):
         errs.append(f"{p}: frontmatter is not a mapping"); continue
     if data.get("name") != d:

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # foundation-verify-routes: the Buildkite twin of .github/workflows/_checks.yml job
 # `verify-routes` (URL naming convention for Worker routes). No-op for repos with no
-# wrangler.toml. The matching logic is copied verbatim from the vendored _checks.yml; only the
-# message wording differs.
+# wrangler.toml. The banned-name rules are copied from the vendored _checks.yml; the host
+# extraction also accepts a leading hostname wildcard (see ROUTE_RE), and the message wording
+# differs.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -16,8 +17,13 @@ cd "$(dirname "$0")/../.."
 # case-insensitive; without this `Foo-EDGE.wave.online` would bypass the cases).
 fail=0
 any=0
-# Double-quoted OR single-quoted (TOML literal string) wave.online host match.
-ROUTE_RE="\"[a-zA-Z0-9._-]+\.wave\.online[^\"]*\"|'[a-zA-Z0-9._-]+\.wave\.online[^']*'"
+# Double-quoted OR single-quoted (TOML literal string) wave.online host match. A route may start
+# with a hostname wildcard (`*-edge.wave.online/*`, `*.wave.online/*`), so the host part is either
+# a `*` followed by zero or more host characters, or one or more host characters. Deliberate
+# widening over the vendored workflow regex, which required an alphanumeric first character and
+# so let a wildcard-prefixed route skip every check.
+H="(\*[a-zA-Z0-9._-]*|[a-zA-Z0-9._-]+)"
+ROUTE_RE="\"${H}\.wave\.online[^\"]*\"|'${H}\.wave\.online[^']*'"
 while IFS= read -r f; do
   any=1
   # Extract host portion (everything before the first /) from `pattern = "host/..."` lines.
@@ -25,7 +31,9 @@ while IFS= read -r f; do
   # single-quoted TOML literal-string twins of each (case-insensitive; lowercased below).
   while IFS= read -r h; do
     [ -z "$h" ] && continue
-    case "$h" in
+    # Classify the host without its leading wildcard, so `*wave-x.wave.online` meets the same
+    # prefix rule as `wave-x.wave.online`. Messages still print the route's host as written.
+    case "${h#\*}" in
       *-edge.wave.online)
         echo "error($f): URL '$h' uses banned -edge suffix"; fail=1 ;;
       *.production.wave.online)

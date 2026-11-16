@@ -13,8 +13,9 @@
 # The two leak guards are not tested here: they are not in this repository. The shared CI kit
 # injects them into the rendered pipeline and the build host runs them from its own pinned copy.
 #
-# Covers: the secret scan's content-only exemptions; the file-size gate's symlink refusal; and the
-# upload bridge's refusals.
+# Covers: the secret scan's content-only exemptions; the file-size gate's symlink refusal and its
+# count of an unterminated final line; verify-routes on wildcard-prefixed routes; skill-validate's
+# duplicate-key check on indented frontmatter; and the upload bridge's refusals.
 set -uo pipefail
 
 SRC="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -111,6 +112,56 @@ expect_rc "file size: small files pass" 0
 git_tree fs "$FS"; mkdir -p "$D/src"; seq 900 > "$D/big.txt"; ln -s ../big.txt "$D/src/oversize.ts"; commit_all
 run "$D" -- bash ".buildkite/scripts/$FS"
 expect_rc "file size: a symlinked source file to an oversized file fails" 1
+git_tree fs "$FS"; mkdir -p "$D/src"; seq 800 > "$D/src/edge.py"; commit_all
+run "$D" -- bash ".buildkite/scripts/$FS"
+expect_rc "file size: exactly 800 newline-terminated lines pass" 0
+git_tree fs "$FS"; mkdir -p "$D/src"; { seq 800; printf 'x = 1'; } > "$D/src/over.py"; commit_all
+run "$D" -- bash ".buildkite/scripts/$FS"
+expect_rc "file size: 800 lines plus an unterminated 801st fail" 1
+expect_out "file size: the unterminated line is counted" "src/over.py has 801 lines"
+
+# --- foundation-verify-routes: wildcard-prefixed routes are checked --------------------------------
+VR=foundation-verify-routes.sh
+vr_case() { # vr_case NAME WANT_RC ROUTE
+  git_tree vr "$VR"; printf 'name = "w"\nroutes = ["%s"]\n' "$3" > "$D/wrangler.toml"; commit_all
+  run "$D" -- bash ".buildkite/scripts/$VR"
+  expect_rc "$1" "$2"
+}
+vr_case "verify routes: a plain production host passes" 0 "api.wave.online/*"
+vr_case "verify routes: a banned -edge suffix fails" 1 "api-edge.wave.online/*"
+vr_case "verify routes: a wildcard-prefixed -edge route fails" 1 "*-edge.wave.online/*"
+vr_case "verify routes: a wildcard-prefixed wave- prefix fails" 1 "*wave-api.wave.online/*"
+vr_case "verify routes: a wildcard-prefixed -staging suffix fails" 1 "*-staging.wave.online/*"
+vr_case "verify routes: a wildcard subdomain route passes" 0 "*.wave.online/*"
+git_tree vr "$VR"; printf 'routes = [\x27*-edge.wave.online/*\x27]\n' > "$D/wrangler.toml"; commit_all
+run "$D" -- bash ".buildkite/scripts/$VR"
+expect_rc "verify routes: a single-quoted wildcard -edge route fails" 1
+
+# --- foundation-skill-validate: duplicate keys at any indentation ----------------------------------
+SV=foundation-skill-validate.sh
+# PyYAML may live in the caller's per-user site folder, which the isolated HOME hides. Pass only
+# the folder that holds the caller's yaml package (read, never written).
+YAML_PP="$(python3 -c 'import os, yaml; print(os.path.dirname(os.path.dirname(yaml.__file__)))' 2>/dev/null || true)"
+SV_VARS=()
+if [[ -n "$YAML_PP" ]]; then SV_VARS=(PYTHONPATH="$YAML_PP"); fi
+sv_case() { # sv_case NAME WANT_RC FRONTMATTER (written under skills/demo/SKILL.md)
+  git_tree sv "$SV"; mkdir -p "$D/skills/demo"
+  printf -- '---\n%s\n---\nbody\n' "$3" > "$D/skills/demo/SKILL.md"; commit_all
+  run "$D" ${SV_VARS[@]+"${SV_VARS[@]}"} -- bash ".buildkite/scripts/$SV"
+  expect_rc "$1" "$2"
+}
+if [[ -n "$YAML_PP" ]]; then
+  sv_case "skill validate: a valid frontmatter passes" 0 $'name: demo\ndescription: a demo'
+  sv_case "skill validate: a column-zero duplicate key fails" 1 $'name: wrong\nname: demo\ndescription: d'
+  sv_case "skill validate: an indented duplicate key fails" 1 $'  name: wrong\n  name: demo\n  description: d'
+  expect_out "skill validate: the indented duplicate is named" "duplicate frontmatter keys: name"
+  sv_case "skill validate: a nested duplicate key fails" 1 $'name: demo\ndescription: d\nhooks:\n  pre: a\n  pre: b'
+else
+  skipped "skill validate: PyYAML is not installed here (cases need it)"
+fi
+git_tree sv "$SV"; printf 'x\n' > "$D/README.md"; commit_all
+run "$D" -- bash ".buildkite/scripts/$SV"
+expect_rc "skill validate: no SKILL.md is a no-op" 0
 
 # --- upload.sh: the bridge uploads only a pipeline that runs .buildkite/wave-ci.sh -------------------
 cat > "$T/bin/buildkite-agent" <<'SHIM'
