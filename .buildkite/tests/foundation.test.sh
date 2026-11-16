@@ -13,9 +13,10 @@
 # The two leak guards are not tested here: they are not in this repository. The shared CI kit
 # injects them into the rendered pipeline and the build host runs them from its own pinned copy.
 #
-# Covers: the secret scan's content-only exemptions; the file-size gate's symlink refusal and its
-# count of an unterminated final line; verify-routes on wildcard-prefixed routes; skill-validate's
-# duplicate-key check on indented frontmatter; and the upload bridge's refusals.
+# Covers: the secret scan's content-only exemptions, its scan of UTF-16 files and its handling of
+# blank allowlist lines; the file-size gate's symlink refusal and its count of an unterminated final
+# line; verify-routes on wildcard-prefixed routes; skill-validate's duplicate-key check on indented
+# frontmatter; and the upload bridge's byte comparison with the kit uploader.
 set -uo pipefail
 
 SRC="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -103,6 +104,19 @@ ss_tree; mkdir -p "$S/leakdir"; printf 'k = %s\n' "$KEY" > "$S/leakdir/a.txt"; p
 ss_case "secret scan: an allowlist phrase matching only the path does not exempt a key" 1
 ss_tree; printf 'k = %s fixture-ok\n' "$KEY" > "$S/a.txt"; printf 'fixture-ok\n' > "$S/.github/.secret-allowlist"
 ss_case "secret scan: an allowlist phrase in the content exempts the line" 0
+# A key stored as UTF-16 holds NUL bytes, so `grep -I` calls the file binary and skips it.
+enc() { python3 -c 'import sys; sys.stdout.buffer.write(bytes.fromhex(sys.argv[3]) + sys.argv[1].encode(sys.argv[2]))' "$@"; }
+ss_tree; enc "k = $KEY"$'\n' utf-16-le "" > "$S/a.txt"; ss_case "secret scan: a key in UTF-16LE with no byte-order mark is caught" 1
+ss_tree; enc "k = $KEY"$'\n' utf-16-le fffe > "$S/a.txt"; ss_case "secret scan: a key in UTF-16LE with a byte-order mark is caught" 1
+ss_tree; enc "k = $KEY"$'\n' utf-16-be feff > "$S/a.txt"; ss_case "secret scan: a key in UTF-16BE with a byte-order mark is caught" 1
+ss_tree; enc "k = $KEY # pragma: allowlist secret"$'\n' utf-16-le fffe > "$S/a.txt"
+ss_case "secret scan: the pragma still exempts a UTF-16 key line" 0
+ss_tree; printf 'k = %s\n' "$KEY" > "$S/a.txt"; printf 'fixture-ok\n\n' > "$S/.github/.secret-allowlist"
+ss_case "secret scan: a blank allowlist line does not exempt every hit" 1
+ss_tree; printf 'k = %s\n' "$KEY" > "$S/a.txt"; printf ' \t\n' > "$S/.github/.secret-allowlist"
+ss_case "secret scan: a whitespace-only allowlist line does not exempt every hit" 1
+ss_tree; printf 'k = %s fixture-ok\n' "$KEY" > "$S/a.txt"; printf '\nfixture-ok\n\n' > "$S/.github/.secret-allowlist"
+ss_case "secret scan: a phrase next to blank allowlist lines still exempts its line" 0
 
 # --- foundation-file-size: symlinks refused, unterminated last line counted ------------------------
 FS=foundation-file-size.sh
@@ -163,7 +177,7 @@ git_tree sv "$SV"; printf 'x\n' > "$D/README.md"; commit_all
 run "$D" -- bash ".buildkite/scripts/$SV"
 expect_rc "skill validate: no SKILL.md is a no-op" 0
 
-# --- upload.sh: the bridge uploads only a pipeline that runs .buildkite/wave-ci.sh -------------------
+# --- upload.sh: the bridge uploads only the kit's own uploader, byte for byte -----------------------
 cat > "$T/bin/buildkite-agent" <<'SHIM'
 #!/usr/bin/env bash
 printf 'agent-args:'
@@ -171,30 +185,48 @@ printf ' %s' "$@"
 printf '\n'
 SHIM
 chmod +x "$T/bin/buildkite-agent"
-up_tree() { # up_tree: a checkout holding upload.sh; pipeline.yml is written by the caller
+# A stand-in for the kit checkout the build host prepares: it holds the kit uploader, which is
+# this checkout's pipeline.yml (the two are byte-identical by contract).
+KIT="$(mktemp_in kit)" || exit 2
+mkdir -p "$KIT/repo-kit/.buildkite"
+cp "$SRC/.buildkite/pipeline.yml" "$KIT/repo-kit/.buildkite/pipeline.yml"
+KIT_NOFILE="$(mktemp_in kitempty)" || exit 2
+up_tree() { # up_tree: a checkout holding upload.sh and a copy of the kit uploader as pipeline.yml
   U="$(mktemp_in up)" || exit 2
   mkdir -p "$U/.buildkite/scripts"
   cp "$SRC/.buildkite/scripts/upload.sh" "$U/.buildkite/scripts/"
+  cp "$SRC/.buildkite/pipeline.yml" "$U/.buildkite/pipeline.yml"
 }
-up_tree; cp "$SRC/.buildkite/pipeline.yml" "$U/.buildkite/pipeline.yml"
-run "$U" -- bash .buildkite/scripts/upload.sh
-expect_rc "upload: this repository's pipeline.yml is uploaded" 0
+up_run() { run "$U" WAVE_CI_DIR="$KIT" -- bash .buildkite/scripts/upload.sh; }
+up_tree; up_run
+expect_rc "upload: the kit uploader is uploaded" 0
 expect_out "upload: with no interpolation and parse warnings rejected" "agent-args: pipeline upload --no-interpolation --reject-parse-warnings"
-up_tree; printf 'steps:\n  - command: .buildkite/wave-ci.sh\n  - command: .buildkite/scripts/other.sh\n' > "$U/.buildkite/pipeline.yml"
-run "$U" -- bash .buildkite/scripts/upload.sh
+up_tree; printf 'steps:\n  - command: .buildkite/wave-ci.sh\n  - command: .buildkite/scripts/other.sh\n' > "$U/.buildkite/pipeline.yml"; up_run
 expect_rc "upload: a step running another script is refused" 2
-up_tree; printf 'steps:\n  - command: .buildkite/wave-ci.sh\n  - plugins:\n      - x#v1: {}\n' > "$U/.buildkite/pipeline.yml"
-run "$U" -- bash .buildkite/scripts/upload.sh
+up_tree; printf 'steps:\n  - command: .buildkite/wave-ci.sh\n  - plugins:\n      - x#v1: {}\n' > "$U/.buildkite/pipeline.yml"; up_run
 expect_rc "upload: a plugin step is refused" 2
-up_tree; printf 'steps:\n  - commands:\n      - .buildkite/wave-ci.sh\n' > "$U/.buildkite/pipeline.yml"
-run "$U" -- bash .buildkite/scripts/upload.sh
+up_tree; printf 'steps:\n  - commands:\n      - .buildkite/wave-ci.sh\n' > "$U/.buildkite/pipeline.yml"; up_run
 expect_rc "upload: a commands list is refused" 2
-up_tree; printf 'steps: []\n' > "$U/.buildkite/pipeline.yml"
-run "$U" -- bash .buildkite/scripts/upload.sh
+up_tree; printf 'steps: []\n' > "$U/.buildkite/pipeline.yml"; up_run
 expect_rc "upload: a pipeline with no step is refused" 2
-up_tree
-run "$U" -- bash .buildkite/scripts/upload.sh
+up_tree; rm "$U/.buildkite/pipeline.yml"; up_run
 expect_rc "upload: a missing pipeline.yml is refused" 2
+# The forms a line match cannot see. Each one appends a step to the real kit uploader.
+up_tree; printf '  - { command: .buildkite/scripts/evil.sh, agents: { queue: other } }\n' >> "$U/.buildkite/pipeline.yml"; up_run
+expect_rc "upload: an added flow-style step is refused" 2
+expect_out "upload: the refusal names the byte comparison" "not byte-for-byte the kit uploader"
+up_tree; printf '  - "command": .buildkite/scripts/evil.sh\n' >> "$U/.buildkite/pipeline.yml"; up_run
+expect_rc "upload: an added step with a quoted key is refused" 2
+up_tree; printf '# one more line\n' >> "$U/.buildkite/pipeline.yml"; up_run
+expect_rc "upload: any byte of difference is refused" 2
+up_tree; rm "$U/.buildkite/pipeline.yml"; ln -s "$KIT/repo-kit/.buildkite/pipeline.yml" "$U/.buildkite/pipeline.yml"; up_run
+expect_rc "upload: a symlinked pipeline.yml is refused" 2
+up_tree; run "$U" -- bash .buildkite/scripts/upload.sh
+expect_rc "upload: no kit checkout is refused" 2
+up_tree; run "$U" WAVE_CI_DIR=relative/kit -- bash .buildkite/scripts/upload.sh
+expect_rc "upload: a relative kit path is refused" 2
+up_tree; run "$U" WAVE_CI_DIR="$KIT_NOFILE" -- bash .buildkite/scripts/upload.sh
+expect_rc "upload: a kit checkout without the uploader is refused" 2
 
 printf '\n%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
 [[ "$fail" -eq 0 ]]
