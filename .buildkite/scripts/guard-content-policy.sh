@@ -14,7 +14,12 @@
 # cleared and the run does not continue. (Local callers can still run the
 # vendored scripts/public-repo-guard/content-policy.sh directly with a list.)
 #
-# Non-PR builds (step guard-content-policy) run this checkout's policy.
+# Non-PR builds (step guard-content-policy) of the default branch run this
+# checkout's policy. Any other Buildkite build whose checkout the author
+# controls (a push to a non-default branch, which may be a same-repo PR's only
+# build, or a PR number without the PR-mode flag) takes the same trusted runner
+# as PR mode below: default-branch policy and .guardignore, and every in-tree
+# escape (.guardignore, guard:allow, .ignore, .rgignore, .gitignore) ignored.
 #
 # PR mode: the non-secret WAVE_JOB_GUARD_PR=1 (set only by the pull-request step
 # guard-content-policy-pr in pipeline.yml) selects the trusted runner below, and
@@ -83,6 +88,21 @@ _guard_is_pr_number() {
   )
 }
 
+# True on a Buildkite build whose checkout the author controls but which is not
+# in PR mode: a pull-request number without WAVE_JOB_GUARD_PR=1, or any build
+# whose branch is not the pipeline's default branch (a missing branch or
+# default branch counts as untrusted). Same rule as guard-gitleaks.sh
+# needs_trust. Such a build uses the default branch's policy and ignores every
+# in-tree escape, exactly as PR mode does. False outside Buildkite (local runs).
+_guard_untrusted_branch_build() {
+  [ -n "${BUILDKITE:-}" ] || return 1
+  [ "${WAVE_JOB_GUARD_PR:-}" = "1" ] && return 1
+  _guard_is_pr_number && return 0
+  [ -z "${BUILDKITE_BRANCH:-}" ] && return 0
+  [ -z "${BUILDKITE_PIPELINE_DEFAULT_BRANCH:-}" ] && return 0
+  [ "$BUILDKITE_BRANCH" != "$BUILDKITE_PIPELINE_DEFAULT_BRANCH" ]
+}
+
 # True when any private-repo list name is set, including empty. No build of
 # this public repository's pipeline may carry these names. A set name is an
 # overridden or misconfigured job environment; presence is enough, and the
@@ -117,7 +137,7 @@ _guard_run_trusted_pr() {
   local default ref rc
   default="${BUILDKITE_PIPELINE_DEFAULT_BRANCH:-}"
   if [ -z "$default" ] || ! git check-ref-format --branch "$default" >/dev/null 2>&1; then
-    _guard_fail "PR mode needs BUILDKITE_PIPELINE_DEFAULT_BRANCH (a valid branch name) to load the trusted policy"
+    _guard_fail "an untrusted build needs BUILDKITE_PIPELINE_DEFAULT_BRANCH (a valid branch name) to load the trusted policy"
   fi
   if [ "$_guard_stage" = "2" ]; then
     _guard_work="$(cd "$(dirname "$0")" && pwd)"
@@ -180,11 +200,11 @@ _guard_run_trusted_pr() {
     cat "$_guard_work/marker.tmp" > "$_guard_work/tree/$_f"
     _n=$((_n + 1))
   done < "$_guard_work/markers.lst"
-  echo "guard-content-policy: '# guard:allow' markers ignored in PR mode ($_n file(s)); policy and .guardignore from '$default'."
+  echo "guard-content-policy: '# guard:allow' markers ignored on this untrusted build ($_n file(s)); policy and .guardignore from '$default'."
   rc=0
   (cd "$_guard_work/tree" && env -u RIPGREP_CONFIG_PATH bash "$_guard_work/content-policy.sh" .) || rc=$?
   if [ "$rc" -eq 0 ]; then
-    echo "guard-content-policy: content policy OK for the rules that ran ('$default' policy); private-repo rule NOT checked (PR mode, no list)"
+    echo "guard-content-policy: content policy OK for the rules that ran ('$default' policy); private-repo rule NOT checked (public repository)"
   fi
   exit "$rc"
 }
@@ -230,14 +250,20 @@ env -u RIPGREP_CONFIG_PATH rg --pcre2-version >/dev/null 2>&1 || {
   echo "ripgrep (rg) in the agent image has no PCRE2 support (rg --pcre2-version failed); the policy needs rg -P — failing closed."
   exit 2
 }
-if [ "$_guard_stage" = "2" ] && [ "${WAVE_JOB_GUARD_PR:-}" != "1" ]; then
-  echo "--trusted-stage is only valid in PR mode (WAVE_JOB_GUARD_PR=1) — failing closed."
+_guard_trusted_runner=0
+if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ] || _guard_untrusted_branch_build; then
+  _guard_trusted_runner=1
+fi
+if [ "$_guard_stage" = "2" ] && [ "$_guard_trusted_runner" != "1" ]; then
+  echo "--trusted-stage is only valid on an untrusted build (PR mode, or a build that is not the default branch) — failing closed."
   exit 2
 fi
 echo "guard-content-policy: private-repo rule NOT checked (public repository, by design: no private list on any build); every other content-policy rule runs."
-if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ]; then
+if [ "$_guard_trusted_runner" = "1" ]; then
   # The list names are absent; a present name already exited above.
-  export WAVE_JOB_GUARD_PR
+  if [ "${WAVE_JOB_GUARD_PR:-}" = "1" ]; then
+    export WAVE_JOB_GUARD_PR
+  fi
   _guard_run_trusted_pr
 fi
 _rc=0

@@ -10,7 +10,7 @@ after both guards pass.
 | step key | mirrors (GitHub workflow / job) | queue | credential |
 |---|---|---|---|
 | `guard-gitleaks` | public-repo-guard.yml `gitleaks` steps (pinned gitleaks 8.30.1, checksum-verified) | `fpc-isolated` | none |
-| `guard-content-policy` | public-repo-guard.yml `content policy` step, without the private-repo rule; non-pull-request builds of any branch | `fpc-isolated` | none |
+| `guard-content-policy` | public-repo-guard.yml `content policy` step, without the private-repo rule; non-pull-request builds of any branch (other branches use the default branch's policy) | `fpc-isolated` | none |
 | `guard-content-policy-pr` | the same step on pull-request builds, without the private-repo rule | `fpc-isolated` | none |
 | `unit` | smoke-install.yml `unit` (type-check, build, unit tests) | `fpc-isolated` | none |
 | `smoke` | smoke-install.yml `smoke` (pack, fresh install, version and banner check) | `fpc-isolated` | none |
@@ -43,12 +43,14 @@ with `no-command-eval`. The pipeline uses no plugins and has no secret values in
 - **content policy.** Runs the vendored `scripts/public-repo-guard/content-policy.sh` with the same
   public-safe rule set on every build: every rule except private-repo. The private-repo rule needs
   a confidential list, and this public repository's builds never receive one, by design. If any
-  form of that list is present in a job, the step fails closed (exit 2). Non-pull-request builds
-  (`guard-content-policy`) run this checkout's policy. On a
-  pull-request build, `guard-content-policy-pr` runs the default branch's policy and `.guardignore`
-  against a copy of the PR tree, ignores inline `# guard:allow` markers and the copy's `.ignore`,
-  `.rgignore` and `.gitignore` files, and logs that the private-repo rule was not checked. A pull
-  request from a fork is refused (exit 2).
+  form of that list is present in a job, the step fails closed (exit 2). Only a non-pull-request
+  build of the default branch runs this checkout's policy. Every other build takes the trusted
+  runner. That includes a pull request (`guard-content-policy-pr`), and a push to any other
+  branch, which may be a same-repository pull request's only build (`guard-content-policy`). The
+  trusted runner uses the default branch's policy and `.guardignore` against a copy of the tree.
+  It ignores inline `# guard:allow` markers and the copy's `.ignore`, `.rgignore` and `.gitignore`
+  files. This is decided in the script, not by a host setting. A pull request from a fork is
+  refused (exit 2).
 
 ## Differences from the GitHub workflows
 
